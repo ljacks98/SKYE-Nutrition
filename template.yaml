@@ -1,0 +1,99 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Dialysis Care backend - staff sign-in, a protected HTTP API, one Lambda function, two DynamoDB tables.
+
+Parameters:
+  SiteUrl:
+    Type: String
+    Default: "*"
+    Description: 'Website allowed to call the API, e.g. https://main.abc123.amplifyapp.com ("*" allows any site, so use it for testing only)'
+
+Resources:
+  # --- Sign-in: staff accounts. Only an admin can create them, and everyone must use an authenticator app (MFA).
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UsernameAttributes: [email]
+      UsernameConfiguration: { CaseSensitive: false }
+      AutoVerifiedAttributes: [email]
+      AdminCreateUserConfig: { AllowAdminCreateUserOnly: true }
+      MfaConfiguration: "ON"
+      EnabledMfas: [SOFTWARE_TOKEN_MFA]
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref UserPool
+      ExplicitAuthFlows: [ALLOW_USER_SRP_AUTH, ALLOW_REFRESH_TOKEN_AUTH]
+
+  # --- Data: both tables are encrypted with AWS KMS and keep point-in-time backups.
+  PatientsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions: [{ AttributeName: id, AttributeType: S }]
+      KeySchema: [{ AttributeName: id, KeyType: HASH }]
+      SSESpecification: { SSEEnabled: true }
+      PointInTimeRecoverySpecification: { PointInTimeRecoveryEnabled: true }
+
+  SessionsTable: # one item per treatment, grouped by patient and sorted by time
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: patientId, AttributeType: S }
+        - { AttributeName: recordedAt, AttributeType: S }
+      KeySchema:
+        - { AttributeName: patientId, KeyType: HASH }
+        - { AttributeName: recordedAt, KeyType: RANGE }
+      SSESpecification: { SSEEnabled: true }
+      PointInTimeRecoverySpecification: { PointInTimeRecoveryEnabled: true }
+
+  # --- API: every route requires a valid sign-in token from the user pool above.
+  Api:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      CorsConfiguration:
+        AllowOrigins: [!Ref SiteUrl]
+        AllowHeaders: [Authorization, Content-Type]
+        AllowMethods: [GET, POST]
+      Auth:
+        DefaultAuthorizer: StaffLogin
+        Authorizers:
+          StaffLogin:
+            IdentitySource: "$request.header.Authorization"
+            JwtConfiguration:
+              issuer: !Sub "https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}"
+              audience: [!Ref UserPoolClient]
+
+  # --- Code: one function serves all four routes (src/app.mjs).
+  ApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: nodejs22.x
+      CodeUri: src/
+      Handler: app.handler
+      Timeout: 10
+      Environment:
+        Variables:
+          PATIENTS_TABLE: !Ref PatientsTable
+          SESSIONS_TABLE: !Ref SessionsTable
+      Policies: # least privilege: the function can read and add records, but never delete them
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action: [dynamodb:GetItem, dynamodb:PutItem, dynamodb:Query, dynamodb:Scan]
+              Resource: [!GetAtt PatientsTable.Arn, !GetAtt SessionsTable.Arn]
+      Events:
+        ListPatients: { Type: HttpApi, Properties: { ApiId: !Ref Api, Method: GET, Path: /patients } }
+        AddPatient: { Type: HttpApi, Properties: { ApiId: !Ref Api, Method: POST, Path: /patients } }
+        ListSessions: { Type: HttpApi, Properties: { ApiId: !Ref Api, Method: GET, Path: "/patients/{id}/sessions" } }
+        AddSession: { Type: HttpApi, Properties: { ApiId: !Ref Api, Method: POST, Path: "/patients/{id}/sessions" } }
+
+Outputs:
+  ApiUrl:
+    Value: !Sub "https://${Api}.execute-api.${AWS::Region}.amazonaws.com"
+  UserPoolId:
+    Value: !Ref UserPool
+  UserPoolClientId:
+    Value: !Ref UserPoolClient
