@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "./api.js";
-import { STEPS, STATUS_LABEL, when } from "./shared.jsx";
+import { STATUS_LABEL, when } from "./shared.jsx";
 
 const pct = (part, whole) => (whole ? `${Math.round((part / whole) * 100)}%` : "—");
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
@@ -66,7 +66,7 @@ export default function Results() {
             {data.funnel.map(({ step, count }) => (
               <li key={step}>
                 <span className="funnel-count">{count}</span>
-                <span className="funnel-label">{STEPS.find(([k]) => k === step)[1]}</span>
+                <span className="funnel-label">{STATUS_LABEL[step]}</span>
                 <span className="funnel-bar"><span style={{ width: `${(count / top) * 100}%` }} /></span>
               </li>
             ))}

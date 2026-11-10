@@ -6,9 +6,9 @@ export const STEPS = [
   ["accepted", "Accepted"],
   ["packed", "Packed"],
   ["picked_up", "Picked up"],
-  ["confirmed", "Patient confirmed"],
+  ["confirmed", "Confirmed"],
 ];
-export const STATUS_LABEL = { ...Object.fromEntries(STEPS), issue: "Problem reported", cancelled: "Cancelled" };
+export const STATUS_LABEL = { ...Object.fromEntries(STEPS), confirmed: "Patient confirmed", issue: "Problem reported", cancelled: "Cancelled" };
 
 export const ROLE_LABEL = {
   "care-manager": "Care manager",

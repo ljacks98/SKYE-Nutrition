@@ -88,7 +88,7 @@ function CurrentPickup({ referral: r, onChange }) {
       </div>
       <div className="pickup-details">
         <dl className="facts stacked">
-          <div><dt>What</dt><dd>{r.need} for {r.householdSize === 1 ? "1 person" : `${r.householdSize} people`}</dd></div>
+          <div><dt>What</dt><dd>{r.need} ({r.householdSize === 1 ? "1 person" : `${r.householdSize} people`})</dd></div>
           <div><dt>Where</dt><dd>{r.pickupLocation}</dd></div>
           <div><dt>When</dt><dd>{r.pickupWindow}</dd></div>
           <div><dt>From</dt><dd>{r.partner}</dd></div>

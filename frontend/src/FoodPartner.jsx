@@ -40,7 +40,7 @@ export default function FoodPartner() {
                     <span className="muted">{r.ref}</span>
                   </div>
                   <p className="ref-meta">
-                    {r.need} for a household of {r.householdSize}. Pickup at {r.pickupLocation}, {r.pickupWindow}.
+                    {r.need}, household of {r.householdSize}. Pickup at {r.pickupLocation}, {r.pickupWindow}.
                   </p>
                   {r.notes && <p className="notes">{r.notes}</p>}
                   {action ? (
@@ -83,7 +83,7 @@ function PickupCheckIn({ onPickedUp }) {
     try {
       const r = await api("/pickup", { code: raw });
       onPickedUp(r);
-      setResult({ ok: true, text: `Picked up: ${r.patientName}, ${r.need.toLowerCase()} for a household of ${r.householdSize}.` });
+      setResult({ ok: true, text: `Picked up: ${r.patientName}. ${r.need}, household of ${r.householdSize}.` });
       setCode("");
     } catch (e) {
       setResult({ ok: false, text: e.message });

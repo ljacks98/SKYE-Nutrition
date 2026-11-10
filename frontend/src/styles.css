@@ -278,6 +278,7 @@ header .account-nav button[aria-pressed="true"] { color: #fff; text-decoration: 
 .steps li.current .stop-label { font-weight: 700; }
 .stop-label, .stop-date { display: block; }
 .stop-date { color: var(--slate); }
+@media (max-width: 30rem) { .steps li { padding-right: 0.375rem; font-size: 0.75rem; } }
 .exit { margin-top: 0.625rem; font-size: 0.9375rem; font-weight: 700; }
 .exit.issue { color: var(--signal); }
 .exit.cancelled { color: var(--slate); }
@@ -293,8 +294,8 @@ header .account-nav button[aria-pressed="true"] { color: #fff; text-decoration: 
 .code-form { display: flex; flex-wrap: wrap; align-items: end; gap: 0.75rem; margin-top: 1rem; }
 .code-form label { display: grid; gap: 0.25rem; color: #c6d3e6; font-size: 0.875rem; }
 .code-form input { width: 10rem; padding: 0.375rem 0.625rem; border: 0; border-radius: 4px; color: var(--sign); font-family: var(--display); font-size: 1.5rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; }
-.checkin-ok { margin-top: 1rem; padding: 0.625rem 0.875rem; border-left: 5px solid var(--line); border-radius: 0 4px 4px 0; background: #fff; color: var(--sign); font-weight: 700; }
-.checkin-error { margin-top: 0.75rem; color: #ffc9d1; font-weight: 700; }
+.checkin .checkin-ok { margin-top: 1rem; padding: 0.625rem 0.875rem; border-left: 5px solid var(--line); border-radius: 0 4px 4px 0; background: #fff; color: var(--sign); font-weight: 700; }
+.checkin .checkin-error { margin-top: 0.75rem; color: #ffc9d1; font-weight: 700; }
 .lane { margin-top: 2.25rem; }
 .lane h3 { display: flex; align-items: center; gap: 0.5rem; margin: 0 0 0.75rem; }
 
