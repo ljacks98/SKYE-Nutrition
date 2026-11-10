@@ -1,0 +1,18 @@
+# How AWS Amplify builds TrueMatch: install and build the website in frontend/, then publish frontend/dist.
+# This file overrides the build settings in the Amplify console.
+version: 1
+frontend:
+  phases:
+    preBuild:
+      commands:
+        - npm --prefix frontend install
+    build:
+      commands:
+        - npm --prefix frontend run build
+  artifacts:
+    baseDirectory: frontend/dist
+    files:
+      - '**/*'
+  cache:
+    paths:
+      - frontend/node_modules/**/*

@@ -55,7 +55,7 @@ export default function App({ user, signOut }) {
   return (
     <div className="app">
       <header>
-        <h1>Dialysis Care</h1>
+        <h1>TrueMatch</h1>
         <span>{user?.signInDetails?.loginId}</span>
         <button onClick={signOut}>Sign out</button>
       </header>
@@ -98,7 +98,7 @@ export default function App({ user, signOut }) {
               <History sessions={sessions[selected.id]} />
             </>
           ) : (
-            <p className="muted">Choose a patient on the left, or add one.</p>
+            <p className="muted">Choose a patient from the list, or add one.</p>
           )}
         </section>
       </main>
@@ -153,37 +153,32 @@ function History({ sessions }) {
   if (!sessions) return <p className="muted">Loading treatment history…</p>;
   if (sessions.length === 0) return <p className="muted">No sessions yet. Log the first one above.</p>;
 
+  // Newest first. Each treatment is a stop on the patient's route; a stop with alerts turns red.
   return (
-    <div className="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Date</th>
-            <th>Weight (kg)</th>
-            <th>Fluid removed</th>
-            <th>Systolic BP</th>
-            <th>Time</th>
-            <th>Alerts</th>
-            <th>Notes</th>
-          </tr>
-        </thead>
-        <tbody>
-          {sessions.map((s) => (
-            <tr key={s.recordedAt}>
-              <td>{new Date(s.recordedAt).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}</td>
-              <td>{s.preWeightKg} → {s.postWeightKg}</td>
-              <td>
+    <ol className="route">
+      {sessions.map((s) => (
+        <li key={s.recordedAt} className={s.alerts.length ? "stop flagged" : "stop"}>
+          <time dateTime={s.recordedAt}>
+            {new Date(s.recordedAt).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}
+          </time>
+          <dl className="readings">
+            <div><dt>Weight</dt><dd>{s.preWeightKg} → {s.postWeightKg} kg</dd></div>
+            <div>
+              <dt>Fluid removed</dt>
+              <dd>
                 {s.fluidRemovedKg} kg
                 <span className="track"><span className="bar" style={{ width: barWidth(s.fluidRemovedKg) }} /></span>
-              </td>
-              <td>{s.preSystolic} → {s.postSystolic}</td>
-              <td>{s.minutes} min</td>
-              <td className="wrap">{s.alerts.map((a) => <span key={a} className="alert">{a}</span>)}</td>
-              <td className="wrap">{s.notes}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+              </dd>
+            </div>
+            <div><dt>Systolic BP</dt><dd>{s.preSystolic} → {s.postSystolic}</dd></div>
+            <div><dt>Time</dt><dd>{s.minutes} min</dd></div>
+          </dl>
+          {s.alerts.length > 0 && (
+            <p className="alerts">{s.alerts.map((a) => <span key={a} className="alert">{a}</span>)}</p>
+          )}
+          {s.notes && <p className="notes">{s.notes}</p>}
+        </li>
+      ))}
+    </ol>
   );
 }
