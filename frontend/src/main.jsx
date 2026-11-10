@@ -16,6 +16,7 @@ Amplify.configure({
       userPoolId: import.meta.env.VITE_USER_POOL_ID,
       userPoolClientId: import.meta.env.VITE_USER_POOL_CLIENT_ID,
       loginWith: { email: true },
+      signUpVerificationMethod: "code", // new accounts confirm their email with a code
     },
   },
 });
@@ -33,10 +34,11 @@ const SignInNote = () => (
   <p className="signin-note">Demo system. Use made-up patients only, never real health information.</p>
 );
 
-// <Authenticator> handles sign-in, the first-time password change, MFA setup, and password resets.
-// The app only renders once someone is signed in.
+// <Authenticator> handles sign-in, creating an account, the first-time password change, MFA setup,
+// and "Forgot your password?". The app only renders once someone is signed in.
+// totpIssuer is the name people see for TrueMatch in their authenticator app.
 createRoot(document.getElementById("root")).render(
-  <Authenticator hideSignUp components={{ Header: SignInHeader, Footer: SignInNote }}>
+  <Authenticator totpIssuer="TrueMatch" components={{ Header: SignInHeader, Footer: SignInNote }}>
     {({ user, signOut }) => <App user={user} signOut={signOut} />}
   </Authenticator>
 );

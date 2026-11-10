@@ -1,184 +1,107 @@
 import { useEffect, useState } from "react";
-import { api } from "./api.js";
+import { api, demoView, refreshSignIn } from "./api.js";
+import { ROLE_LABEL } from "./shared.jsx";
+import CareManager from "./CareManager.jsx";
+import FoodPartner from "./FoodPartner.jsx";
+import PatientCard from "./PatientCard.jsx";
+import { Waiting, Account, AdminRequests } from "./Access.jsx";
 
-// Form fields as [name, label, type]. A list instead of a type makes a dropdown.
-const PATIENT_FIELDS = [
-  ["name", "Full name", "text"],
-  ["dob", "Date of birth", "date"],
-  ["dryWeightKg", "Dry weight (kg)", "number"],
-  ["schedule", "Schedule", ["Mon/Wed/Fri", "Tue/Thu/Sat"]],
-  ["access", "Access", ["Fistula", "Graft", "Catheter"]],
-];
+const VIEWS = ["care-manager", "food-partner", "patient"];
 
-const SESSION_FIELDS = [
-  ["preWeightKg", "Weight before (kg)", "number"],
-  ["postWeightKg", "Weight after (kg)", "number"],
-  ["preSystolic", "Systolic BP before", "number"],
-  ["postSystolic", "Systolic BP after", "number"],
-  ["minutes", "Treatment time (min)", "number"],
-  ["notes", "Notes", "textarea"],
-];
-
+// Decides what the signed-in person sees. The server enforces the same rules,
+// so this only chooses screens; it isn't what keeps data private.
 export default function App({ user, signOut }) {
-  const [patients, setPatients] = useState(null); // null until loaded
-  const [selected, setSelected] = useState(null);
-  const [sessions, setSessions] = useState({}); // { patientId: [newest session, ...] }
+  const [me, setMe] = useState(null);
   const [error, setError] = useState("");
+  const [page, setPage] = useState("home"); // home | account | requests
+  const [view, setView] = useState("care-manager"); // demo accounts only
+  const [patientId, setPatientId] = useState(""); // demo accounts only, for the patient view
+  const [reloads, setReloads] = useState(0);
+  const [seeding, setSeeding] = useState(false);
 
-  // Load the patient list once, after sign-in.
-  useEffect(() => {
-    api("/patients").then(setPatients).catch((e) => setError(e.message));
-  }, []);
+  async function loadMe(fresh = false) {
+    setError("");
+    try {
+      if (fresh) await refreshSignIn();
+      demoView.role = "";
+      demoView.patientId = "";
+      const m = await api("/me");
+      setMe(m);
+      setPatientId((id) => id || m.demoPatients?.find((p) => p.id === "demo-pt-1")?.id || m.demoPatients?.[0]?.id || "");
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+  useEffect(() => { loadMe(); }, []);
 
-  // Load a patient's history when they're chosen. Results are filed by patient ID,
-  // so a slow reply can never show up under the wrong patient.
-  useEffect(() => {
-    if (!selected) return;
-    api(`/patients/${selected.id}/sessions`)
-      .then((list) => setSessions((all) => ({ ...all, [selected.id]: list })))
-      .catch((e) => setError(e.message));
-  }, [selected]);
-
-  async function addPatient(values) {
-    const patient = await api("/patients", values);
-    setPatients((list) => [...(list ?? []), patient]);
-    setSelected(patient);
+  async function loadDemoData() {
+    setSeeding(true);
+    try {
+      await api("/demo/seed", {});
+      await loadMe();
+      setReloads((n) => n + 1);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSeeding(false);
+    }
   }
 
-  async function addSession(values) {
-    const session = await api(`/patients/${selected.id}/sessions`, values);
-    setSessions((all) => ({ ...all, [session.patientId]: [session, ...(all[session.patientId] ?? [])] }));
-  }
+  const role = me?.demo ? view : me?.role;
+  // Demo accounts tell the server which view to show; set before the views below make their requests.
+  demoView.role = me?.demo && page === "home" ? view : "";
+  demoView.patientId = me?.demo && page === "home" && view === "patient" ? patientId : "";
 
-  const sortedPatients = [...(patients ?? [])].sort((a, b) => a.name.localeCompare(b.name));
+  let body;
+  if (error && !me) body = <main className="single"><p className="error">{error}</p></main>;
+  else if (!me) body = <main className="single"><p className="muted">Loading…</p></main>;
+  else if (page === "account") body = <Account me={me} />;
+  else if (page === "requests" && me.admin) body = <AdminRequests />;
+  else if (!role) body = me.admin ? <AdminRequests /> : <Waiting me={me} onCheckAgain={() => loadMe(true)} />;
+  else {
+    const key = `${role}-${patientId}-${reloads}`; // a fresh screen whenever the view changes
+    body = role === "care-manager" ? <CareManager key={key} /> : role === "food-partner" ? <FoodPartner key={key} /> : <PatientCard key={key} />;
+  }
 
   return (
     <div className="app">
       <header>
-        <h1>TrueMatch</h1>
-        <span>{user?.signInDetails?.loginId}</span>
-        <button onClick={signOut}>Sign out</button>
+        <h1><button className="home-link" onClick={() => setPage("home")}>TrueMatch</button></h1>
+        {me && (
+          <nav className="account-nav" aria-label="Account">
+            {me.admin && <button aria-pressed={page === "requests"} onClick={() => setPage("requests")}>Access requests</button>}
+            <button aria-pressed={page === "account"} onClick={() => setPage("account")}>Account</button>
+          </nav>
+        )}
+        <span className="who">{user?.signInDetails?.loginId}{me?.role && !me.demo ? `, ${ROLE_LABEL[me.role].toLowerCase()}` : ""}</span>
+        <button className="signout" onClick={signOut}>Sign out</button>
       </header>
 
-      <main className="layout">
-        <aside>
-          <h2>Patients</h2>
-          {!patients && !error && <p className="muted">Loading patients…</p>}
-          {patients?.length === 0 && <p className="muted">No patients yet. Add the first one below.</p>}
-          <ul className="patients">
-            {sortedPatients.map((p) => (
-              <li key={p.id}>
-                <button className={p.id === selected?.id ? "active" : ""} onClick={() => setSelected(p)}>
-                  {p.name}
-                </button>
-              </li>
+      {me?.demo && page === "home" && (
+        <div className="demobar">
+          <span className="demobar-label">Demo account. Showing the</span>
+          <div className="segmented" role="group" aria-label="Show TrueMatch as">
+            {VIEWS.map((v) => (
+              <button key={v} aria-pressed={view === v} onClick={() => setView(v)}>{ROLE_LABEL[v]}</button>
             ))}
-          </ul>
-          <h3>Add a patient</h3>
-          <Form fields={PATIENT_FIELDS} submitLabel="Add patient" onSubmit={addPatient} />
-        </aside>
-
-        <section>
-          {error && <p className="error">{error}</p>}
-          {selected ? (
-            <>
-              <h2>{selected.name}</h2>
-              <dl className="facts">
-                <div><dt>Dry weight</dt><dd>{selected.dryWeightKg} kg</dd></div>
-                <div><dt>Schedule</dt><dd>{selected.schedule}</dd></div>
-                <div><dt>Access</dt><dd>{selected.access}</dd></div>
-                <div><dt>Born</dt><dd>{selected.dob}</dd></div>
-              </dl>
-
-              <h3>Log a session</h3>
-              {/* key gives each patient a fresh, empty form, so numbers never carry over to the wrong person */}
-              <Form key={selected.id} fields={SESSION_FIELDS} submitLabel="Save session" onSubmit={addSession} />
-
-              <h3>Treatment history</h3>
-              <History sessions={sessions[selected.id]} />
-            </>
-          ) : (
-            <p className="muted">Choose a patient from the list, or add one.</p>
+          </div>
+          <span className="demobar-label">view</span>
+          {view === "patient" && me.demoPatients?.length > 0 && (
+            <label className="demobar-patient">
+              as
+              <select value={patientId} onChange={(e) => setPatientId(e.target.value)}>
+                {me.demoPatients.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </label>
           )}
-        </section>
-      </main>
+          <button className="quiet demobar-seed" disabled={seeding} onClick={loadDemoData}>
+            {seeding ? "Loading…" : me.demoPatients?.length ? "Reset demo data" : "Load demo data"}
+          </button>
+        </div>
+      )}
+
+      {error && me && <p className="error banner">{error}</p>}
+      {body}
     </div>
-  );
-}
-
-// Builds a form from a field list and passes the entered values to onSubmit.
-function Form({ fields, submitLabel, onSubmit }) {
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-
-  async function handleSubmit(event) {
-    event.preventDefault();
-    const form = event.currentTarget;
-    setSaving(true);
-    setError("");
-    try {
-      await onSubmit(Object.fromEntries(new FormData(form)));
-      form.reset();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <form className="form" onSubmit={handleSubmit}>
-      {fields.map(([name, label, type]) => (
-        <label key={name}>
-          {label}
-          {Array.isArray(type) ? (
-            <select name={name}>{type.map((option) => <option key={option}>{option}</option>)}</select>
-          ) : type === "textarea" ? (
-            <textarea name={name} rows={2} />
-          ) : (
-            <input name={name} type={type} step={type === "number" ? "any" : undefined} required />
-          )}
-        </label>
-      ))}
-      {error && <p className="error">{error}</p>}
-      <button disabled={saving}>{saving ? "Saving…" : submitLabel}</button>
-    </form>
-  );
-}
-
-// Width of the fluid-removed bar: 5 kg or more fills it.
-const barWidth = (kg) => `${Math.min(Math.max(kg, 0) / 5, 1) * 100}%`;
-
-function History({ sessions }) {
-  if (!sessions) return <p className="muted">Loading treatment history…</p>;
-  if (sessions.length === 0) return <p className="muted">No sessions yet. Log the first one above.</p>;
-
-  // Newest first. Each treatment is a stop on the patient's route; a stop with alerts turns red.
-  return (
-    <ol className="route">
-      {sessions.map((s) => (
-        <li key={s.recordedAt} className={s.alerts.length ? "stop flagged" : "stop"}>
-          <time dateTime={s.recordedAt}>
-            {new Date(s.recordedAt).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}
-          </time>
-          <dl className="readings">
-            <div><dt>Weight</dt><dd>{s.preWeightKg} → {s.postWeightKg} kg</dd></div>
-            <div>
-              <dt>Fluid removed</dt>
-              <dd>
-                {s.fluidRemovedKg} kg
-                <span className="track"><span className="bar" style={{ width: barWidth(s.fluidRemovedKg) }} /></span>
-              </dd>
-            </div>
-            <div><dt>Systolic BP</dt><dd>{s.preSystolic} → {s.postSystolic}</dd></div>
-            <div><dt>Time</dt><dd>{s.minutes} min</dd></div>
-          </dl>
-          {s.alerts.length > 0 && (
-            <p className="alerts">{s.alerts.map((a) => <span key={a} className="alert">{a}</span>)}</p>
-          )}
-          {s.notes && <p className="notes">{s.notes}</p>}
-        </li>
-      ))}
-    </ol>
   );
 }
