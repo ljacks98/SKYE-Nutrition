@@ -25,6 +25,7 @@ Resources:
     Properties:
       UserPoolId: !Ref UserPool
       ExplicitAuthFlows: [ALLOW_USER_SRP_AUTH, ALLOW_REFRESH_TOKEN_AUTH]
+      AuthSessionValidity: 15 # minutes to finish sign-in steps (new password, MFA setup); the default of 3 is too short for first-time setup
 
   # --- Data: both tables are encrypted with AWS KMS and keep point-in-time backups.
   PatientsTable:
