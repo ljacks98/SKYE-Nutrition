@@ -34,7 +34,7 @@ export default function CareManager() {
     <>
       <nav className="tabs" aria-label="Care manager pages">
         <button aria-pressed={tab === "patients"} onClick={() => setTab("patients")}>Patients and referrals</button>
-        <button aria-pressed={tab === "results"} onClick={() => setTab("results")}>Results for health plans</button>
+        <button aria-pressed={tab === "results"} onClick={() => setTab("results")}>Results for partners</button>
       </nav>
       {tab === "patients" ? <Patients /> : <Results />}
     </>
@@ -66,6 +66,12 @@ function Patients() {
     const patient = await api("/patients", values);
     setPatients((list) => [...(list ?? []), patient]);
     setSelected(patient);
+  }
+
+  async function saveOutcomes(values) {
+    const updated = await api(`/patients/${selected.id}/outcomes`, values);
+    setPatients((list) => list.map((p) => (p.id === updated.id ? updated : p)));
+    setSelected(updated);
   }
 
   async function addSession(values) {
@@ -161,6 +167,10 @@ function Patients() {
               <p className="muted">{selected.name} hasn't opted in to food referrals, so referrals can't be sent yet.</p>
             )}
 
+            <h3>Outcomes for organization results</h3>
+            <p className="muted small">Counts for the 12 weeks before TrueMatch and the latest 12 weeks. They feed the organization results that partners see, as totals only.</p>
+            <Outcomes key={`out-${selected.id}-${selected.outcomes?.updatedAt ?? ""}`} outcomes={selected.outcomes} onSave={saveOutcomes} />
+
             <h3>Log a treatment session</h3>
             <Form key={selected.id} fields={SESSION_FIELDS} submitLabel="Save session" onSubmit={addSession} />
 
@@ -172,6 +182,57 @@ function Patients() {
         )}
       </section>
     </main>
+  );
+}
+
+const LAB_CHOICES = [["", "Not recorded"], ["in", "All in range"], ["out", "Not all in range"]];
+
+// Before/after counts for one patient. Blank fields are left as they were.
+function Outcomes({ outcomes = {}, onSave }) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [saved, setSaved] = useState(false);
+  const rows = [
+    ["Hospital stays", "hospitalBefore", "hospitalAfter"],
+    ["Emergency visits", "erBefore", "erAfter"],
+    ["Missed dialysis treatments", "missedBefore", "missedAfter"],
+  ];
+  async function submit(event) {
+    event.preventDefault();
+    setSaving(true); setError(""); setSaved(false);
+    try { await onSave(Object.fromEntries(new FormData(event.currentTarget))); setSaved(true); }
+    catch (e) { setError(e.message); }
+    finally { setSaving(false); }
+  }
+  return (
+    <form className="outcomes" onSubmit={submit}>
+      <table>
+        <thead><tr><th></th><th>12 weeks before TrueMatch</th><th>Latest 12 weeks</th></tr></thead>
+        <tbody>
+          {rows.map(([label, before, after]) => (
+            <tr key={label}>
+              <th scope="row">{label}</th>
+              <td><input name={before} type="number" min="0" max="365" step="1" defaultValue={outcomes[before] ?? ""} aria-label={`${label}, 12 weeks before TrueMatch`} /></td>
+              <td><input name={after} type="number" min="0" max="365" step="1" defaultValue={outcomes[after] ?? ""} aria-label={`${label}, latest 12 weeks`} /></td>
+            </tr>
+          ))}
+          <tr>
+            <th scope="row">Potassium, phosphorus and albumin</th>
+            {["labsBefore", "labsNow"].map((name) => (
+              <td key={name}>
+                <select name={name} defaultValue={outcomes[name] ?? ""} aria-label={`Labs, ${name === "labsBefore" ? "before TrueMatch" : "latest"}`}>
+                  {LAB_CHOICES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                </select>
+              </td>
+            ))}
+          </tr>
+        </tbody>
+      </table>
+      {error && <p className="error">{error}</p>}
+      {saved && <p className="notice" role="status">Saved. Organization results now include these numbers.</p>}
+      <button disabled={saving}>{saving ? "Saving…" : "Save outcomes"}</button>
+      {outcomes.updatedAt && <p className="muted small">Last updated {when(outcomes.updatedAt)}.</p>}
+    </form>
   );
 }
 

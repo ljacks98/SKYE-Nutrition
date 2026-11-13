@@ -144,8 +144,43 @@ const MOVES = {
   "care-manager": { referred: ["cancelled"], accepted: ["cancelled"], packed: ["cancelled"], issue: ["cancelled"] },
 };
 
+// ---- Outcomes a care manager records per patient: the 12 weeks before TrueMatch vs the latest 12 weeks ----
+const OUTCOME_COUNTS = ["hospitalBefore", "hospitalAfter", "erBefore", "erAfter", "missedBefore", "missedAfter"];
+const LAB_STATES = ["in", "out"]; // all key labs in range, or not
+function cleanOutcomes(input) {
+  const out = {};
+  for (const field of OUTCOME_COUNTS) {
+    if (input[field] === undefined || input[field] === "") continue;
+    const n = Number(input[field]);
+    if (!Number.isInteger(n) || n < 0 || n > 365) return null;
+    out[field] = n;
+  }
+  for (const field of ["labsBefore", "labsNow"]) if (LAB_STATES.includes(input[field])) out[field] = input[field];
+  return out;
+}
+
+// Organization results: totals across enrolled patients, never names.
+function organizationFrom(patients, referrals) {
+  const enrolledIds = new Set(referrals.filter((r) => r.status !== "cancelled").map((r) => r.patientId));
+  const tracked = patients.filter((p) => enrolledIds.has(p.id) && p.outcomes && OUTCOME_COUNTS.some((f) => f in p.outcomes));
+  const sum = (field) => tracked.reduce((total, p) => total + (p.outcomes[field] ?? 0), 0);
+  const withLabs = patients.filter((p) => enrolledIds.has(p.id) && p.outcomes?.labsNow);
+  return {
+    enrolled: enrolledIds.size,
+    tracked: tracked.length,
+    hospital: { before: sum("hospitalBefore"), after: sum("hospitalAfter") },
+    er: { before: sum("erBefore"), after: sum("erAfter") },
+    missed: { before: sum("missedBefore"), after: sum("missedAfter") },
+    labs: {
+      withLabs: withLabs.length,
+      inRangeNow: withLabs.filter((p) => p.outcomes.labsNow === "in").length,
+      inRangeBefore: withLabs.filter((p) => p.outcomes.labsBefore === "in").length,
+    },
+  };
+}
+
 // ---- Results to share with health plans: counts and timing only, no names or medical details ----
-function resultsFrom(referrals) {
+function resultsFrom(referrals, patients = []) {
   const reached = (r, step) => (r.history ?? []).some((h) => h.status === step);
   const live = referrals.filter((r) => r.status !== "cancelled");
   const pickedUp = live.filter((r) => reached(r, "picked_up"));
@@ -175,6 +210,7 @@ function resultsFrom(referrals) {
 
   return {
     generatedAt: new Date().toISOString(),
+    organization: organizationFrom(patients, referrals),
     feedback: {
       responses: surveys.length,
       rating: tally("rating", [4, 3, 2, 1]),
@@ -275,6 +311,17 @@ export const handler = async (event) => {
       return reply(200, Items);
     }
 
+    case "POST /patients/{id}/outcomes": {
+      if (!is("care-manager")) return forbidden();
+      const patient = await getPatient(patientId);
+      if (!patient) return reply(404, { error: "This patient doesn't exist. Refresh the patient list." });
+      const outcomes = cleanOutcomes(body);
+      if (!outcomes) return reply(400, { error: "Use whole numbers from 0 to 365 for visits and missed treatments." });
+      patient.outcomes = { ...outcomes, updatedAt: new Date().toISOString(), updatedBy: who.email };
+      await db.send(new PutCommand({ TableName: PATIENTS_TABLE, Item: patient }));
+      return reply(200, patient);
+    }
+
     case "POST /patients/{id}/sessions": {
       if (!is("care-manager")) return forbidden();
       const patient = await getPatient(patientId);
@@ -360,7 +407,8 @@ export const handler = async (event) => {
 
     case "GET /results": {
       if (!is("care-manager")) return forbidden();
-      return reply(200, resultsFrom(await scanAll(REFERRALS_TABLE)));
+      const [referrals, patients] = await Promise.all([scanAll(REFERRALS_TABLE), scanAll(PATIENTS_TABLE)]);
+      return reply(200, resultsFrom(referrals, patients));
     }
 
     // -- Access requests: anyone signed in can ask; admins decide --
@@ -459,9 +507,21 @@ function demoData(by) {
     ["Aisha Bello", "1968-09-09", 62.4, "Mon/Wed/Fri", "Graft", 3, 1, "Yes"],
     ["Tom Nguyen", "1959-05-17", 88.1, "Tue/Thu/Sat", "Fistula", 2, 1, "No"],
   ];
-  const patients = people.map(([name, dob, dryWeightKg, schedule, access, householdSize, clinic, optedIn], i) => ({
-    id: `demo-pt-${i + 1}`, name, dob, dryWeightKg, schedule, access, householdSize, clinic: clinics[clinic], optedIn, createdBy: by,
-  }));
+  // Made-up 12-week numbers: [hospital stays, ER visits, missed treatments] before -> after, and labs in range before -> now
+  const demoOutcomes = [
+    [2, 1, 3, 1, 4, 1, "out", "in"], [1, 1, 2, 2, 3, 2, "out", "out"], [1, 0, 2, 1, 2, 0, "out", "in"],
+    [2, 1, 1, 1, 5, 2, "in", "in"], [1, 0, 2, 1, 1, 1, "out", "in"], null,
+  ];
+  const patients = people.map(([name, dob, dryWeightKg, schedule, access, householdSize, clinic, optedIn], i) => {
+    const o = demoOutcomes[i];
+    return {
+      id: `demo-pt-${i + 1}`, name, dob, dryWeightKg, schedule, access, householdSize, clinic: clinics[clinic], optedIn, createdBy: by,
+      outcomes: o ? {
+        hospitalBefore: o[0], hospitalAfter: o[1], erBefore: o[2], erAfter: o[3], missedBefore: o[4], missedAfter: o[5],
+        labsBefore: o[6], labsNow: o[7], updatedAt: new Date(now).toISOString(), updatedBy: by,
+      } : undefined,
+    };
+  });
 
   const sessions = [];
   const addSessions = (p, rows) => rows.forEach(([daysAgo, pre, post, preSys, postSys, minutes, notes]) => {
