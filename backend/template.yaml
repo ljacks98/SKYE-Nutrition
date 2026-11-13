@@ -1,0 +1,154 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: TrueMatch backend - sign-in with three account types, a protected HTTP API, one Lambda function, three DynamoDB tables.
+
+Parameters:
+  SiteUrl:
+    Type: String
+    Default: "*"
+    Description: 'Website allowed to call the API, e.g. https://main.abc123.amplifyapp.com ("*" allows any site, so use it for testing only)'
+
+Resources:
+  # --- Sign-in. Anyone can create an account (email confirmed with a code), and everyone must use an authenticator app (MFA).
+  # A new account can't see anything until an admin approves its access request and adds it to a group.
+  # The group decides what the account can see and do (see backend/src/app.mjs).
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UsernameAttributes: [email]
+      UsernameConfiguration: { CaseSensitive: false }
+      AutoVerifiedAttributes: [email]
+      AdminCreateUserConfig: { AllowAdminCreateUserOnly: false }
+      AccountRecoverySetting: # "Forgot your password?" sends a reset code to the account's email
+        RecoveryMechanisms: [{ Name: verified_email, Priority: 1 }]
+      MfaConfiguration: "ON"
+      EnabledMfas: [SOFTWARE_TOKEN_MFA]
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref UserPool
+      ExplicitAuthFlows: [ALLOW_USER_SRP_AUTH, ALLOW_REFRESH_TOKEN_AUTH]
+      AuthSessionValidity: 15 # minutes to finish sign-in steps (new password, MFA setup); the default of 3 is too short for first-time setup
+
+  CareManagerGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties: { UserPoolId: !Ref UserPool, GroupName: care-manager, Description: "Care managers: patients, treatment sessions, food referrals, results for health plans" }
+  FoodPartnerGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties: { UserPoolId: !Ref UserPool, GroupName: food-partner, Description: "Food partners: accept and pack referrals, confirm pickup by scanning the patient's code" }
+  PatientGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties: { UserPoolId: !Ref UserPool, GroupName: patient, Description: "Patients: their own patient card. The account email must match the patient record's email." }
+  AdminGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties: { UserPoolId: !Ref UserPool, GroupName: admin, Description: "Admins: approve or deny access requests" }
+  DemoGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties: { UserPoolId: !Ref UserPool, GroupName: demo, Description: "Presenting accounts that can switch between all three views and load made-up demo data" }
+
+  # --- Data: every table is encrypted with AWS KMS and keeps point-in-time backups.
+  PatientsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions: [{ AttributeName: id, AttributeType: S }]
+      KeySchema: [{ AttributeName: id, KeyType: HASH }]
+      SSESpecification: { SSEEnabled: true }
+      PointInTimeRecoverySpecification: { PointInTimeRecoveryEnabled: true }
+
+  SessionsTable: # one item per treatment, grouped by patient and sorted by time
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: patientId, AttributeType: S }
+        - { AttributeName: recordedAt, AttributeType: S }
+      KeySchema:
+        - { AttributeName: patientId, KeyType: HASH }
+        - { AttributeName: recordedAt, KeyType: RANGE }
+      SSESpecification: { SSEEnabled: true }
+      PointInTimeRecoverySpecification: { PointInTimeRecoveryEnabled: true }
+
+  ReferralsTable: # one item per food referral, with its full status history
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions: [{ AttributeName: id, AttributeType: S }]
+      KeySchema: [{ AttributeName: id, KeyType: HASH }]
+      SSESpecification: { SSEEnabled: true }
+      PointInTimeRecoverySpecification: { PointInTimeRecoveryEnabled: true }
+
+  AccessRequestsTable: # one item per account: the access it asked for and the admin's decision
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions: [{ AttributeName: id, AttributeType: S }]
+      KeySchema: [{ AttributeName: id, KeyType: HASH }]
+      SSESpecification: { SSEEnabled: true }
+      PointInTimeRecoverySpecification: { PointInTimeRecoveryEnabled: true }
+
+  # --- API: every route requires a valid sign-in token from the user pool above.
+  Api:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      CorsConfiguration:
+        AllowOrigins: [!Ref SiteUrl]
+        AllowHeaders: [Authorization, Content-Type, X-View-As, X-Patient-Id]
+        AllowMethods: [GET, POST]
+      Auth:
+        DefaultAuthorizer: StaffLogin
+        Authorizers:
+          StaffLogin:
+            IdentitySource: "$request.header.Authorization"
+            JwtConfiguration:
+              issuer: !Sub "https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}"
+              audience: [!Ref UserPoolClient]
+
+  # --- Code: one function serves every route (src/app.mjs).
+  ApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: nodejs22.x
+      CodeUri: src/
+      Handler: app.handler
+      Timeout: 10
+      Environment:
+        Variables:
+          PATIENTS_TABLE: !Ref PatientsTable
+          SESSIONS_TABLE: !Ref SessionsTable
+          REFERRALS_TABLE: !Ref ReferralsTable
+          REQUESTS_TABLE: !Ref AccessRequestsTable
+          USER_POOL_ID: !Ref UserPool
+      Policies: # least privilege: the function can read and add records, but never delete them
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action: [dynamodb:GetItem, dynamodb:PutItem, dynamodb:Query, dynamodb:Scan]
+              Resource: [!GetAtt PatientsTable.Arn, !GetAtt SessionsTable.Arn, !GetAtt ReferralsTable.Arn, !GetAtt AccessRequestsTable.Arn]
+            - Effect: Allow # admins approve access by adding people to groups
+              Action: [cognito-idp:AdminAddUserToGroup, cognito-idp:AdminRemoveUserFromGroup]
+              Resource: !GetAtt UserPool.Arn
+      Events:
+        ListPatients: { Type: HttpApi, Properties: { ApiId: !Ref Api, Method: GET, Path: /patients } }
+        AddPatient: { Type: HttpApi, Properties: { ApiId: !Ref Api, Method: POST, Path: /patients } }
+        ListSessions: { Type: HttpApi, Properties: { ApiId: !Ref Api, Method: GET, Path: "/patients/{id}/sessions" } }
+        AddSession: { Type: HttpApi, Properties: { ApiId: !Ref Api, Method: POST, Path: "/patients/{id}/sessions" } }
+        Me: { Type: HttpApi, Properties: { ApiId: !Ref Api, Method: GET, Path: /me } }
+        ListReferrals: { Type: HttpApi, Properties: { ApiId: !Ref Api, Method: GET, Path: /referrals } }
+        AddReferral: { Type: HttpApi, Properties: { ApiId: !Ref Api, Method: POST, Path: /referrals } }
+        UpdateReferral: { Type: HttpApi, Properties: { ApiId: !Ref Api, Method: POST, Path: "/referrals/{id}/status" } }
+        ConfirmPickup: { Type: HttpApi, Properties: { ApiId: !Ref Api, Method: POST, Path: /pickup } }
+        Results: { Type: HttpApi, Properties: { ApiId: !Ref Api, Method: GET, Path: /results } }
+        DemoSeed: { Type: HttpApi, Properties: { ApiId: !Ref Api, Method: POST, Path: /demo/seed } }
+        RequestAccess: { Type: HttpApi, Properties: { ApiId: !Ref Api, Method: POST, Path: /access-requests } }
+        ListAccessRequests: { Type: HttpApi, Properties: { ApiId: !Ref Api, Method: GET, Path: /access-requests } }
+        DecideAccessRequest: { Type: HttpApi, Properties: { ApiId: !Ref Api, Method: POST, Path: "/access-requests/{id}/decision" } }
+
+Outputs:
+  ApiUrl:
+    Value: !Sub "https://${Api}.execute-api.${AWS::Region}.amazonaws.com"
+  UserPoolId:
+    Value: !Ref UserPool
+  UserPoolClientId:
+    Value: !Ref UserPoolClient

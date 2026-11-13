@@ -1,0 +1,348 @@
+/*
+  TrueMatch styles: wayfinding.
+  The look borrows from hospital signs and transit line maps. One yellow "line" runs through the product:
+  it leads into the sign-in card, the patient list is a set of stops on it, and each treatment is a stop on a patient's route.
+  Everything else stays quiet: flat sign plates, small corners, no shadows.
+
+  Type: Barlow Condensed (drawn from highway and transit signs) for names and headings;
+  Atkinson Hyperlegible (Braille Institute, easy to tell 1/l/I and 0/O apart) for everything people read and type.
+  Color: navy and white do the work; yellow is only ever the line; red is only ever an alert.
+*/
+:root {
+  --sign: #13294b;        /* navy sign plate */
+  --sign-deep: #0d1f3a;
+  --line: #f5b800;        /* the yellow line */
+  --line-dark: #d99f00;
+  --platform: #e9edf2;    /* side rail, quiet fills */
+  --rule: #c9d1dc;        /* borders and dividers */
+  --ink: #1b2433;
+  --slate: #4b5a6e;       /* secondary text; 7:1 on white */
+  --signal: #c8102e;      /* alerts only */
+  --signal-soft: #fbe7ea;
+
+  --display: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --text: "Atkinson Hyperlegible", system-ui, sans-serif;
+
+  /* Make the Amplify sign-in screen match */
+  --amplify-fonts-default-variable: var(--text);
+  --amplify-fonts-default-static: var(--text);
+  --amplify-components-button-primary-background-color: var(--line);
+  --amplify-components-button-primary-color: var(--sign);
+  --amplify-components-button-primary-hover-background-color: var(--line-dark);
+  --amplify-components-button-primary-hover-color: var(--sign);
+  --amplify-components-button-primary-focus-background-color: var(--line-dark);
+  --amplify-components-button-primary-focus-color: var(--sign);
+  --amplify-components-button-primary-active-background-color: var(--line-dark);
+  --amplify-components-button-primary-active-color: var(--sign);
+  --amplify-components-button-link-color: var(--sign);
+  --amplify-components-button-link-hover-color: var(--sign-deep);
+  --amplify-components-button-link-hover-background-color: var(--platform);
+  --amplify-components-fieldcontrol-border-color: #8794a6;
+  --amplify-components-fieldcontrol-focus-border-color: var(--sign);
+  --amplify-components-fieldcontrol-focus-box-shadow: 0 0 0 2px var(--sign);
+  --amplify-components-authenticator-router-border-width: 0;
+  --amplify-components-authenticator-router-box-shadow: none;
+  --amplify-radii-small: 4px;
+  --amplify-radii-medium: 4px;
+
+  color-scheme: light;
+  font-family: var(--text);
+  line-height: 1.5;
+  color: var(--ink);
+  background: #fff;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; }
+button, input, select, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 3px solid var(--sign); outline-offset: 2px; }
+h1, h2, h3 { margin: 0; font-family: var(--display); line-height: 1.1; color: var(--sign); }
+h2 { font-size: 2.25rem; font-weight: 700; letter-spacing: 0.005em; }
+h3 { margin: 2.5rem 0 0.875rem; font-size: 1.375rem; font-weight: 600; letter-spacing: 0.01em; }
+p { margin: 0; }
+.muted { color: var(--slate); }
+.error { color: var(--signal); font-weight: 700; }
+
+/* ---------- Sign-in: the line leads from the TrueMatch stop into the card ---------- */
+[data-amplify-authenticator] {
+  min-height: 100vh;
+  padding: 0 1rem 3rem;
+  background: var(--sign);
+}
+[data-amplify-authenticator] [data-amplify-container] { width: 100%; max-width: 28rem; }
+
+.signin-brand { position: relative; padding: 4.5rem 0 2.25rem 2.75rem; color: #fff; }
+/* the line: starts at the stop and runs down to meet the card's top edge */
+.signin-brand::before {
+  content: ""; position: absolute; left: 0.875rem; top: 4.95rem; bottom: 0; width: 6px;
+  background: var(--line); transform-origin: top;
+}
+/* the stop: a terminal circle beside the name */
+.signin-brand::after {
+  content: ""; position: absolute; left: 0.25rem; top: 4.35rem; width: 1.5rem; height: 1.5rem;
+  border: 6px solid var(--line); border-radius: 50%; background: #fff;
+}
+.signin-brand h1 { color: #fff; font-size: 3.25rem; font-weight: 700; letter-spacing: 0.005em; }
+.signin-brand p { margin-top: 0.375rem; color: #c6d3e6; font-size: 1.125rem; }
+
+[data-amplify-authenticator] [data-amplify-router] {
+  margin-left: 0.875rem;              /* the card sits on the end of the line */
+  border-top: 6px solid var(--line);
+  border-radius: 0 4px 4px 4px;
+  background: #fff;
+}
+[data-amplify-authenticator] .amplify-button--primary { font-family: var(--display); font-size: 1.1875rem; font-weight: 700; letter-spacing: 0.01em; }
+[data-amplify-authenticator] .amplify-heading { font-family: var(--display); color: var(--sign); }
+
+.signin-note { margin: 1.25rem 0 0 0.875rem; color: #c6d3e6; font-size: 0.875rem; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .signin-brand::before { animation: draw-line 700ms 150ms cubic-bezier(.2, .7, .2, 1) both; }
+  @keyframes draw-line { from { transform: scaleY(0); } }
+}
+
+/* ---------- App frame: a sign bar, then the patient line beside the chosen patient ---------- */
+.app { display: flex; flex-direction: column; min-height: 100vh; }
+.app > main { flex: 1; }
+
+header {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1.25rem;
+  padding: 0.75rem 1.5rem; background: var(--sign); color: #fff;
+  border-bottom: 6px solid var(--line);
+}
+header h1 { display: flex; align-items: center; gap: 0.625rem; flex: 1; color: #fff; font-size: 1.75rem; font-weight: 700; }
+header h1::before { content: ""; width: 0.875rem; height: 0.875rem; border: 4px solid var(--line); border-radius: 50%; background: #fff; }
+header span { color: #c6d3e6; font-size: 0.9375rem; }
+header button { padding: 0.25rem 0.875rem; border: 2px solid #fff; border-radius: 4px; background: none; color: #fff; font-family: var(--display); font-size: 1.0625rem; font-weight: 600; cursor: pointer; }
+header button:hover { background: #fff; color: var(--sign); }
+header :focus-visible { outline-color: var(--line); }
+
+.layout { display: grid; grid-template-columns: 19rem minmax(0, 1fr); }
+aside { padding: 1.75rem 1.5rem 2.5rem; background: var(--platform); }
+aside h3 { margin-top: 2.75rem; }
+section { max-width: 62rem; padding: 2rem 2.5rem 4rem; }
+@media (max-width: 50rem) {
+  .layout { grid-template-columns: minmax(0, 1fr); }
+  section { padding: 1.75rem 1.25rem 3rem; }
+}
+
+/* ---------- Patient list: stops on the line ---------- */
+.patients { margin: 1rem 0 0; padding: 0; list-style: none; }
+.patients li { position: relative; }
+/* line segment from this stop to the next one, so the line ends at the first and last patient */
+.patients li:not(:last-child)::before { content: ""; position: absolute; left: 0.5625rem; top: 1.25rem; height: 100%; width: 5px; background: var(--line); }
+.patients button {
+  position: relative; display: block; width: 100%;
+  padding: 0.5rem 0.75rem 0.5rem 2.25rem; border: 0; border-radius: 4px;
+  background: none; text-align: left; cursor: pointer;
+}
+.patients button::before {
+  content: ""; position: absolute; left: 0.1875rem; top: 50%; width: 1rem; height: 1rem; margin-top: -0.5rem;
+  border: 3px solid var(--sign); border-radius: 50%; background: #fff;
+}
+.patients button:hover { background: #dbe2ea; }
+.patients button.active { background: var(--sign); color: #fff; font-weight: 700; }
+.patients button.active::before { border-color: #fff; background: var(--line); }
+
+/* ---------- Patient details ---------- */
+.facts { display: flex; flex-wrap: wrap; gap: 0.75rem 2.75rem; margin: 1rem 0 0; padding: 0.875rem 0; border-block: 1px solid var(--rule); }
+.facts dt { color: var(--slate); font-size: 0.875rem; }
+.facts dd { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+/* ---------- Forms ---------- */
+.form { display: grid; grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr)); gap: 0.875rem 1rem; }
+.form label { display: grid; gap: 0.25rem; color: var(--slate); font-size: 0.875rem; }
+.form label:has(textarea), .form label.full { grid-column: 1 / -1; }
+.form input, .form select, .form textarea {
+  width: 100%; padding: 0.5rem 0.625rem; border: 1.5px solid #8794a6; border-radius: 4px;
+  background: #fff; color: var(--ink); font-size: 1rem;
+}
+.form input:focus, .form select:focus, .form textarea:focus { border-color: var(--sign); outline: 2px solid var(--sign); outline-offset: 0; }
+.form .error { grid-column: 1 / -1; }
+.form button {
+  justify-self: start; align-self: end; padding: 0.5rem 1.25rem; border: 0; border-radius: 4px;
+  background: var(--line); color: var(--sign); font-family: var(--display); font-size: 1.1875rem; font-weight: 700; letter-spacing: 0.01em;
+  cursor: pointer;
+}
+.form button:hover { background: var(--line-dark); }
+.form button:disabled { opacity: 0.6; cursor: wait; }
+aside .form { grid-template-columns: minmax(0, 1fr); }
+
+/* ---------- Treatment history: a route, newest stop first ---------- */
+.route { margin: 0; padding: 0; list-style: none; }
+.stop { position: relative; padding: 0 0 2rem 2.5rem; }
+.stop:last-child { padding-bottom: 0; }
+/* line segment from this stop down to the next; the last stop ends the line */
+.stop:not(:last-child)::before { content: ""; position: absolute; left: 0.5625rem; top: 0.75rem; bottom: -0.75rem; width: 5px; background: var(--line); }
+/* the stop itself, drawn over the line */
+.stop::after {
+  content: ""; position: absolute; left: 0.1875rem; top: 0.25rem; width: 1rem; height: 1rem;
+  border: 3px solid var(--sign); border-radius: 50%; background: #fff;
+}
+.stop.flagged::after { border-color: var(--signal); background: var(--signal); box-shadow: 0 0 0 3px #fff; }
+.stop time { display: block; font-family: var(--display); font-size: 1.3125rem; font-weight: 600; color: var(--sign); line-height: 1.2; }
+
+.readings { display: flex; flex-wrap: wrap; gap: 0.5rem 2.25rem; margin: 0.5rem 0 0; font-variant-numeric: tabular-nums; }
+.readings dt { color: var(--slate); font-size: 0.8125rem; }
+.readings dd { margin: 0; font-weight: 700; }
+
+.track { display: block; width: 6rem; height: 0.375rem; margin-top: 0.25rem; border-radius: 2px; background: var(--platform); }
+.bar { display: block; height: 100%; border-radius: 2px; background: var(--sign); }
+
+.alerts { display: flex; flex-wrap: wrap; gap: 0.375rem; margin-top: 0.625rem; }
+.alert { padding: 0.125rem 0.5rem; border-radius: 4px; background: var(--signal-soft); color: var(--signal); font-size: 0.875rem; font-weight: 700; }
+.notes { max-width: 38rem; margin-top: 0.5rem; color: var(--slate); }
+
+/* ================= Account types, referrals, results ================= */
+
+/* Buttons inside pages: signal yellow by default; quiet = outlined; danger = signal red */
+:where(main) button {
+  padding: 0.45rem 1.1rem; border: 0; border-radius: 4px;
+  background: var(--line); color: var(--sign);
+  font-family: var(--display); font-size: 1.125rem; font-weight: 700; letter-spacing: 0.01em; cursor: pointer;
+}
+:where(main) button:hover { background: var(--line-dark); }
+:where(main) button:disabled { opacity: 0.6; cursor: wait; }
+button.quiet { padding: calc(0.45rem - 2px) calc(1.1rem - 2px); border: 2px solid var(--sign); border-radius: 4px; background: none; color: var(--sign); font-family: var(--display); font-weight: 600; cursor: pointer; }
+button.quiet:hover { background: var(--platform); }
+button.danger { background: var(--signal); color: #fff; }
+button.danger:hover { background: #a00d25; }
+button.quiet.on-dark { border-color: #fff; color: #fff; }
+button.quiet.on-dark:hover { background: rgba(255, 255, 255, 0.12); }
+
+main.single { width: 100%; max-width: 62rem; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
+h4 { margin: 1.75rem 0 0.75rem; font-family: var(--display); font-size: 1.125rem; font-weight: 600; color: var(--sign); }
+.lede { max-width: 44rem; margin-top: 0.5rem; color: var(--slate); font-size: 1.0625rem; }
+.small { font-size: 0.875rem; }
+.notice { max-width: 44rem; margin: 1rem 0; padding: 0.75rem 1rem; border-left: 5px solid var(--line); border-radius: 0 4px 4px 0; background: var(--platform); }
+.notice.denied { border-left-color: var(--signal); }
+.error.banner { margin: 0; padding: 0.75rem 1.5rem; background: var(--signal-soft); }
+code { padding: 0.05rem 0.35rem; border-radius: 3px; background: var(--platform); color: var(--sign); font-family: var(--display); font-size: 1.0625em; font-weight: 700; letter-spacing: 0.08em; }
+
+/* Header: name, account links, sign out */
+header .home-link { padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
+header .home-link:hover { background: none; color: #fff; text-decoration: underline 3px var(--line); text-underline-offset: 6px; }
+.account-nav { display: flex; gap: 0.25rem; }
+header .account-nav button { padding: 0.25rem 0.5rem; border: 0; background: none; color: #c6d3e6; }
+header .account-nav button:hover { background: none; color: #fff; }
+header .account-nav button[aria-pressed="true"] { color: #fff; text-decoration: underline 3px var(--line); text-underline-offset: 6px; }
+
+/* Demo bar: switch between the three views while presenting */
+.demobar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; padding: 0.625rem 1.5rem; background: var(--platform); border-bottom: 1px solid var(--rule); color: var(--slate); font-size: 0.9375rem; }
+.segmented { display: inline-flex; border: 2px solid var(--sign); border-radius: 4px; overflow: hidden; }
+.segmented button { padding: 0.3rem 0.875rem; border: 0; background: #fff; color: var(--sign); font-family: var(--display); font-size: 1.0625rem; font-weight: 600; cursor: pointer; }
+.segmented button + button { border-left: 2px solid var(--sign); }
+.segmented button[aria-pressed="true"] { background: var(--sign); color: #fff; }
+.demobar-patient select { margin-left: 0.375rem; padding: 0.3rem 0.5rem; border: 1.5px solid #8794a6; border-radius: 4px; background: #fff; color: var(--ink); font: inherit; }
+.demobar .demobar-seed { margin-left: auto; padding: 0.2rem 0.75rem; font-size: 1rem; }
+
+/* Care manager tabs */
+.tabs { display: flex; flex-wrap: wrap; padding: 0 1.5rem; border-bottom: 1px solid var(--rule); background: #fff; }
+.tabs button { margin-bottom: -1px; padding: 0.75rem 1rem 0.625rem; border: 0; border-bottom: 4px solid transparent; background: none; color: var(--slate); font-family: var(--display); font-size: 1.125rem; font-weight: 600; cursor: pointer; }
+.tabs button:hover { color: var(--sign); }
+.tabs button[aria-pressed="true"] { border-bottom-color: var(--sign); color: var(--sign); }
+
+/* Referral board: everything still in motion, grouped by where it is */
+.board-group { margin-top: 1.75rem; }
+.board-group h3 { display: flex; align-items: center; gap: 0.5rem; margin: 0 0 0.5rem; }
+.count { display: inline-grid; place-items: center; min-width: 1.75rem; height: 1.75rem; padding: 0 0.45rem; border-radius: 999px; background: var(--sign); color: #fff; font-family: var(--text); font-size: 0.875rem; font-weight: 700; }
+.board-group.issue .count { background: var(--signal); }
+.board-list { margin: 0; padding: 0; border-top: 1px solid var(--rule); list-style: none; }
+.board-list button {
+  display: grid; grid-template-columns: minmax(9rem, 1fr) minmax(0, 2fr) auto; gap: 0.25rem 1rem; width: 100%;
+  padding: 0.625rem 0.375rem; border: 0; border-bottom: 1px solid var(--rule); border-radius: 0; background: none;
+  color: var(--ink); font-family: var(--text); font-size: 1rem; font-weight: 400; letter-spacing: 0; text-align: left; cursor: pointer;
+}
+.board-list button:hover { background: var(--platform); }
+@media (max-width: 40rem) { .board-list button { grid-template-columns: minmax(0, 1fr); } }
+.back { margin-bottom: 1rem; }
+
+/* Referral cards */
+.ref-list { display: grid; gap: 0.75rem; margin: 0; padding: 0; list-style: none; }
+.ref-card { padding: 1rem 1.25rem; border: 1px solid var(--rule); border-radius: 4px; background: #fff; }
+.ref-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 0.25rem 1rem; }
+.ref-head strong { font-family: var(--display); font-size: 1.3125rem; font-weight: 600; color: var(--sign); }
+.ref-meta { margin-top: 0.25rem; color: var(--slate); }
+.ref-card > button, .confirm-pair { margin-top: 0.875rem; }
+.confirm-pair { display: inline-flex; flex-wrap: wrap; gap: 0.5rem; }
+
+/* A referral's progress, drawn as the line with five stops */
+.steps { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); margin: 1rem 0 0; padding: 0; list-style: none; }
+.steps li { position: relative; padding: 1.5rem 0.5rem 0 0; color: var(--slate); font-size: 0.8125rem; line-height: 1.3; }
+.steps li:not(:last-child)::before { content: ""; position: absolute; top: 0.375rem; left: 0.5rem; width: 100%; height: 5px; background: var(--rule); }
+.steps li.done:has(+ li.done)::before { background: var(--line); }
+.steps li::after { content: ""; position: absolute; top: 0; left: 0; width: 1rem; height: 1rem; border: 3px solid var(--rule); border-radius: 50%; background: #fff; box-sizing: border-box; }
+.steps li.done::after { border-color: var(--sign); background: var(--sign); }
+.steps li.current::after { border-color: var(--sign); background: var(--line); }
+.steps li.done { color: var(--ink); }
+.steps li.current .stop-label { font-weight: 700; }
+.stop-label, .stop-date { display: block; }
+.stop-date { color: var(--slate); }
+@media (max-width: 30rem) { .steps li { padding-right: 0.375rem; font-size: 0.75rem; } }
+.exit { margin-top: 0.625rem; font-size: 0.9375rem; font-weight: 700; }
+.exit.issue { color: var(--signal); }
+.exit.cancelled { color: var(--slate); }
+
+/* Food partner: pickup check-in plate and work lanes */
+.checkin { padding: 1.5rem; border-radius: 4px; background: var(--sign); color: #fff; }
+.checkin h2 { color: #fff; }
+.checkin > p { margin-top: 0.25rem; color: #c6d3e6; }
+.checkin :focus-visible { outline-color: var(--line); }
+.checkin .muted { color: #c6d3e6; }
+.scanner { display: grid; justify-items: start; gap: 0.5rem; margin-top: 1rem; }
+.scanner video { width: min(100%, 22rem); border: 3px solid var(--line); border-radius: 4px; }
+.code-form { display: flex; flex-wrap: wrap; align-items: end; gap: 0.75rem; margin-top: 1rem; }
+.code-form label { display: grid; gap: 0.25rem; color: #c6d3e6; font-size: 0.875rem; }
+.code-form input { width: 10rem; padding: 0.375rem 0.625rem; border: 0; border-radius: 4px; color: var(--sign); font-family: var(--display); font-size: 1.5rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; }
+.checkin .checkin-ok { margin-top: 1rem; padding: 0.625rem 0.875rem; border-left: 5px solid var(--line); border-radius: 0 4px 4px 0; background: #fff; color: var(--sign); font-weight: 700; }
+.checkin .checkin-error { margin-top: 0.75rem; color: #ffc9d1; font-weight: 700; }
+.lane { margin-top: 2.25rem; }
+.lane h3 { display: flex; align-items: center; gap: 0.5rem; margin: 0 0 0.75rem; }
+
+/* Patient card */
+.pickup-card { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 1.5rem 2.5rem; margin-top: 1.5rem; padding: 1.5rem; border: 1px solid var(--rule); border-top: 6px solid var(--line); border-radius: 0 0 4px 4px; }
+@media (max-width: 44rem) { .pickup-card { grid-template-columns: minmax(0, 1fr); } }
+.pickup-code { max-width: 16rem; text-align: center; }
+.pickup-code img { display: block; width: 15rem; height: auto; margin: 0 auto; }
+.code-text { margin-top: 0.375rem; color: var(--sign); font-family: var(--display); font-size: 2.25rem; font-weight: 700; letter-spacing: 0.14em; }
+.pickup-code .small { color: var(--slate); }
+.facts.stacked { display: grid; gap: 0.5rem; margin: 0; padding: 0; border: 0; }
+.facts.stacked div { display: grid; grid-template-columns: 4rem minmax(0, 1fr); gap: 1rem; }
+.facts.stacked dt { padding-top: 0.1rem; }
+.patient-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; margin-top: 1.25rem; }
+.patient-actions p { width: 100%; font-weight: 700; }
+.form.problem { grid-template-columns: minmax(0, 1fr); margin-top: 1rem; }
+.form.problem button { justify-self: start; }
+.exit-note { margin-top: 1rem; color: var(--sign); font-weight: 700; }
+.past { margin: 0; padding: 0; border-top: 1px solid var(--rule); list-style: none; }
+.past li { padding: 0.625rem 0; border-bottom: 1px solid var(--rule); }
+
+/* Admin: access requests */
+.decision-note { display: grid; gap: 0.25rem; max-width: 28rem; margin-top: 0.75rem; color: var(--slate); font-size: 0.875rem; }
+.decision-note input { padding: 0.45rem 0.6rem; border: 1.5px solid #8794a6; border-radius: 4px; color: var(--ink); font: inherit; }
+.decision { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 0.75rem; }
+
+/* Results for health plans */
+.report-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: start; gap: 1rem 2rem; }
+.report-actions { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+.funnel { display: grid; gap: 0.5rem; margin: 0; padding: 0; list-style: none; }
+.funnel li { display: grid; grid-template-columns: 3.25rem 10.5rem minmax(0, 1fr); align-items: center; gap: 1rem; }
+.funnel-count { color: var(--sign); font-family: var(--display); font-size: 1.75rem; font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
+.funnel-bar { height: 0.75rem; border-radius: 2px; background: var(--platform); }
+.funnel-bar span { display: block; height: 100%; border-radius: 2px; background: var(--sign); }
+@media (max-width: 36rem) { .funnel li { grid-template-columns: 2.75rem minmax(0, 1fr); } .funnel-bar { grid-column: 2; } }
+.findings { display: grid; gap: 0.375rem; max-width: 44rem; margin: 0; padding-left: 1.25rem; }
+.findings strong { color: var(--sign); }
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th, td { padding: 0.5rem 1.25rem 0.5rem 0; border-bottom: 1px solid var(--rule); text-align: left; white-space: nowrap; }
+th { color: var(--slate); font-size: 0.875rem; font-weight: 400; }
+.print-only { display: none; }
+
+@media print {
+  header, .demobar, .tabs, .report-actions, .error.banner { display: none !important; }
+  .print-only { display: block; }
+  .app { display: block; min-height: 0; }
+  main.single { max-width: none; padding: 0; }
+  .funnel-bar, .funnel-bar span { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
