@@ -8,7 +8,7 @@ This is a demo. Use made-up patients only (see [Before you store real patient da
 
 ```
 Browser (React app, hosted on AWS Amplify)
-   │  1. Staff sign in ──────────▶ Amazon Cognito (admin-created accounts, MFA required)
+   │  1. Staff sign in ──────────▶ Amazon Cognito (admin-approved accounts, MFA optional for the demo)
    │  2. Every request carries the sign-in token
    ▼
 API Gateway (HTTP API) ── refuses any request without a valid token
@@ -70,7 +70,7 @@ sam deploy --stack-name truematch-backend --resolve-s3 --capabilities CAPABILITY
 
 ## Before you store real patient data
 
-The defaults here are deliberately cautious: only an admin can create accounts, every user needs MFA, both tables are encrypted with point-in-time backups, the Lambda function can read and add records but never delete them, and the audit log records who did what without any medical details.
+The defaults here are deliberately cautious: an admin approves every account before it can see anything, MFA is available (turn it back to required before real data), both tables are encrypted with point-in-time backups, the Lambda function can read and add records but never delete them, and the audit log records who did what without any medical details.
 
 A system holding real patient records (PHI) still needs more. Accept AWS's Business Associate Addendum (BAA) in AWS Artifact and use only HIPAA-eligible AWS services. Add roles, for example Cognito groups that separate nurses from admins. Turn on a CloudTrail trail and set how long logs are kept. Have the clinical team set the alert limits at the top of `backend/src/app.mjs`. Finally, complete a security review and a HIPAA risk assessment. Until then, use made-up test patients.
 
