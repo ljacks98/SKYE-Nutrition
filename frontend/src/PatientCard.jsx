@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import QRCode from "qrcode";
 import { api } from "./api.js";
-import { Steps, STATUS_LABEL, RATING_LABEL, RIDE_LABEL, RIDE_NEXT_LABEL, firstName, shortDate } from "./shared.jsx";
+import { Steps, DietTags, FoodLists, STATUS_LABEL, RATING_LABEL, RIDE_LABEL, RIDE_NEXT_LABEL, firstName, shortDate } from "./shared.jsx";
 
 // One survey question as large tap-friendly choices.
 function Choices({ legend, name, options, answers, setAnswers }) {
@@ -51,6 +51,7 @@ export default function PatientCard() {
       <h2>{firstName(me.patient.name)}'s food pickups</h2>
       <p className="lede">From your care team at {me.patient.clinic}.</p>
       {current ? <CurrentPickup referral={current} onChange={replace} /> : <p className="muted">No pickups scheduled right now. Your care manager will set one up with you.</p>}
+      {me.patient.food && <FoodForYou food={me.patient.food} />}
       {past.length > 0 && (
         <>
           <h3>Past pickups</h3>
@@ -65,6 +66,22 @@ export default function PatientCard() {
         </>
       )}
     </main>
+  );
+}
+
+// The patient's own food guidance, from the diagnoses and health plan their care team recorded.
+function FoodForYou({ food }) {
+  return (
+    <section className="food-for-you">
+      <h3>Food for your health</h3>
+      <DietTags diet={food} />
+      <FoodLists food={food} chooseTitle="Choose more often" limitTitle="Go easy on" />
+      <h4>Ways to get this food</h4>
+      <ul className="food-options">
+        {food.options.map((o) => <li key={o.title}><strong>{o.title}.</strong> {o.forPatient}</li>)}
+      </ul>
+      <p className="muted small">General guidance from your care team. If your dietitian told you something different, follow your dietitian.</p>
+    </section>
   );
 }
 
@@ -110,6 +127,12 @@ function CurrentPickup({ referral: r, onChange }) {
           <div><dt>When</dt><dd>{r.pickupWindow}</dd></div>
           <div><dt>From</dt><dd>{r.partner}</dd></div>
         </dl>
+        {r.diet && (
+          <div className="packed-for-you">
+            <p>Packed for your health</p>
+            <DietTags diet={r.diet} />
+          </div>
+        )}
         <Steps referral={r} />
 
         {r.status === "picked_up" && !problem && !surveyOpen && (

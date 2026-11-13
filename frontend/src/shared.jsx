@@ -137,3 +137,43 @@ export function ConfirmButton({ label, confirmLabel, onConfirm, className = "" }
     </span>
   );
 }
+
+// ---- Medically tailored food. The server works out the food plan; these only show it. ----
+export const CONDITION_LABEL = {
+  dialysis: "Kidney failure on dialysis",
+  diabetes: "Diabetes",
+  hypertension: "High blood pressure",
+  cholesterol: "High cholesterol",
+};
+export const BENEFIT_LABEL = { meals: "Medically tailored meals", box: "Healthy food box", card: "Grocery allowance card" };
+export const PLAN_TYPES = ["Medicare Advantage", "Medicaid", "Medicare", "Commercial", "None or unknown"];
+
+// Diet needs as small labels, for example "Low potassium". Never diagnoses.
+export function DietTags({ diet, inline = false }) {
+  if (!diet?.tags?.length) return null;
+  const Wrap = inline ? "span" : "p";
+  return (
+    <Wrap className="diet-tags">
+      {diet.tags.map((t) => <span key={t} className="diet-tag">{t}</span>)}
+    </Wrap>
+  );
+}
+
+// What to choose and what to limit, side by side, with any notes underneath.
+export function FoodLists({ food, chooseTitle = "Choose more", limitTitle = "Limit" }) {
+  return (
+    <>
+      <div className="food-lists">
+        <div className="choose">
+          <h4>{chooseTitle}</h4>
+          <ul>{food.choose.map((x) => <li key={x}>{x}</li>)}</ul>
+        </div>
+        <div className="limit">
+          <h4>{limitTitle}</h4>
+          <ul>{food.limit.map((x) => <li key={x}>{x}</li>)}</ul>
+        </div>
+      </div>
+      {food.notes?.map((n) => <p key={n} className="food-note">{n}</p>)}
+    </>
+  );
+}

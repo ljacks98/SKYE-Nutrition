@@ -34,6 +34,7 @@ export default function Results() {
       ["Households that received food", data.households],
       ["People in those households", data.people],
       ["Problems reported", data.issues],
+      ["Packed to a medical diet", data.tailored ?? 0],
       ["Cancelled (not counted above)", data.cancelled],
       ...(org ? [
         [],
@@ -102,6 +103,7 @@ export default function Results() {
             <li><strong>{data.medianDaysToPickup ?? "—"} days</strong> was the median time from referral to pickup.</li>
             <li><strong>{plural(data.people, "person", "people")}</strong> in {plural(data.households, "household", "households")} received food.</li>
             <li><strong>{data.confirmed}</strong> pickups were confirmed by the patient themselves.</li>
+            {data.tailored > 0 && <li><strong>{pct(data.tailored, data.referrals)}</strong> of referrals were packed to the patient's medical diet ({data.tailored} of {data.referrals}).</li>}
             <li><strong>{plural(data.issues, "problem", "problems")}</strong> reported by patients{data.cancelled ? `, and ${plural(data.cancelled, "referral", "referrals")} cancelled (left out of the counts above)` : ""}.</li>
           </ul>
 

@@ -136,6 +136,7 @@ Resources:
         ListSessions: { Type: HttpApi, Properties: { ApiId: !Ref Api, Method: GET, Path: "/patients/{id}/sessions" } }
         AddSession: { Type: HttpApi, Properties: { ApiId: !Ref Api, Method: POST, Path: "/patients/{id}/sessions" } }
         RecordOutcomes: { Type: HttpApi, Properties: { ApiId: !Ref Api, Method: POST, Path: "/patients/{id}/outcomes" } }
+        RecordHealth: { Type: HttpApi, Properties: { ApiId: !Ref Api, Method: POST, Path: "/patients/{id}/health" } }
         Me: { Type: HttpApi, Properties: { ApiId: !Ref Api, Method: GET, Path: /me } }
         ListReferrals: { Type: HttpApi, Properties: { ApiId: !Ref Api, Method: GET, Path: /referrals } }
         AddReferral: { Type: HttpApi, Properties: { ApiId: !Ref Api, Method: POST, Path: /referrals } }

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "./api.js";
-import { Steps, STATUS_LABEL, shortDate } from "./shared.jsx";
+import { Steps, DietTags, FoodLists, STATUS_LABEL, shortDate } from "./shared.jsx";
 
 // The food partner's day: confirm pickups by scanning the patient's code, and work the queue.
 export default function FoodPartner() {
@@ -42,6 +42,12 @@ export default function FoodPartner() {
                   <p className="ref-meta">
                     {r.need}, household of {r.householdSize}. Pickup at {r.pickupLocation}, {r.pickupWindow}.
                   </p>
+                  {r.diet && (
+                    <details className="diet" open={status === "accepted"}>
+                      <summary>Pack for a medical diet <DietTags diet={r.diet} inline /></summary>
+                      <FoodLists food={r.diet} chooseTitle="Pack" limitTitle="Leave out or keep small" />
+                    </details>
+                  )}
                   {r.notes && <p className="notes">{r.notes}</p>}
                   {action ? (
                     <button onClick={() => move(r, next).catch((e) => setError(e.message))}>{action}</button>
@@ -109,14 +115,37 @@ function PickupCheckIn({ onPickedUp }) {
   );
 }
 
-// Uses the browser's built-in QR reader where it exists (Chrome on Android and Mac). Elsewhere, people type the code.
+// Reads QR codes with the browser's built-in reader where it has one (Chrome on Mac and Android), and with a
+// small bundled reader everywhere else (Safari on iPhone and Mac, Firefox, Chrome on Windows).
+async function makeReader(video) {
+  const native = "BarcodeDetector" in window
+    && (await window.BarcodeDetector.getSupportedFormats?.().then((f) => f.includes("qr_code")).catch(() => false));
+  if (native) {
+    const detector = new window.BarcodeDetector({ formats: ["qr_code"] });
+    return async () => (await detector.detect(video).catch(() => []))[0]?.rawValue ?? null;
+  }
+  const { default: jsQR } = await import("jsqr"); // loaded only when needed
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  return async () => {
+    const { videoWidth: w, videoHeight: h } = video;
+    if (!w || !h) return null;
+    const scale = Math.min(1, 640 / Math.max(w, h)); // smaller frames read faster on phones
+    canvas.width = Math.round(w * scale);
+    canvas.height = Math.round(h * scale);
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    return jsQR(frame.data, frame.width, frame.height, { inversionAttempts: "dontInvert" })?.data ?? null;
+  };
+}
+
 function Scanner({ onCode }) {
   const video = useRef(null);
   const latestOnCode = useRef(onCode);
   latestOnCode.current = onCode; // always call the newest handler without restarting the camera
   const [on, setOn] = useState(false);
   const [error, setError] = useState("");
-  const supported = typeof window !== "undefined" && "BarcodeDetector" in window && navigator.mediaDevices?.getUserMedia;
+  const canUseCamera = typeof window !== "undefined" && window.isSecureContext && !!navigator.mediaDevices?.getUserMedia;
 
   useEffect(() => {
     if (!on) return;
@@ -126,22 +155,26 @@ function Scanner({ onCode }) {
     (async () => {
       try {
         stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+        if (stopped) return;
         video.current.srcObject = stream;
         await video.current.play();
-        const detector = new window.BarcodeDetector({ formats: ["qr_code"] });
+        const read = await makeReader(video.current);
         const look = async () => {
           if (stopped) return;
-          const found = await detector.detect(video.current).catch(() => []);
-          if (found[0]?.rawValue) {
+          const value = await read().catch(() => null);
+          if (value) {
             setOn(false);
-            latestOnCode.current(found[0].rawValue);
+            latestOnCode.current(value);
             return;
           }
           timer = setTimeout(look, 250);
         };
         look();
-      } catch {
-        setError("The camera didn't open. Allow camera access, or type the code instead.");
+      } catch (e) {
+        if (stopped) return;
+        setError(e?.name === "NotAllowedError"
+          ? "Camera access is blocked. Allow the camera for this site in your browser settings, or type the code below."
+          : "The camera didn't open. Type the code below instead.");
         setOn(false);
       }
     })();
@@ -152,7 +185,7 @@ function Scanner({ onCode }) {
     };
   }, [on]);
 
-  if (!supported) return <p className="muted small">This browser can't scan QR codes. Type the code below instead.</p>;
+  if (!canUseCamera) return <p className="muted small">This browser can't open the camera. Type the code below instead.</p>;
   return (
     <div className="scanner">
       {on ? (
