@@ -28,6 +28,24 @@ const ADMIN_ROUTES = ["GET /access-requests", "POST /access-requests/{id}/decisi
 const STEPS = ["referred", "accepted", "packed", "picked_up", "confirmed"];
 const DEFAULT_PARTNER = "Riverside Community Pantry";
 
+// The short survey a patient answers when they confirm pickup. Keys are stored; the screens show the wording.
+const SURVEY = {
+  rating: [1, 2, 3, 4], // 4 = great, 3 = good, 2 = okay, 1 = not good
+  ride: ["own", "someone", "program", "none"], // how they got to the pickup
+  needsRideNext: ["yes", "no", "unsure"],
+};
+function cleanSurvey(input) {
+  if (!input || typeof input !== "object") return undefined;
+  const survey = {
+    rating: SURVEY.rating.includes(Number(input.rating)) ? Number(input.rating) : undefined,
+    ride: SURVEY.ride.includes(input.ride) ? input.ride : undefined,
+    needsRideNext: SURVEY.needsRideNext.includes(input.needsRideNext) ? input.needsRideNext : undefined,
+    comment: text(input.comment, 500) || undefined,
+  };
+  if (!survey.rating && !survey.ride && !survey.needsRideNext && !survey.comment) return undefined;
+  return { ...survey, at: new Date().toISOString() };
+}
+
 // ---- Small helpers ----
 const reply = (statusCode, data) => ({
   statusCode,
@@ -109,7 +127,7 @@ async function patientFor(who) {
 }
 
 // What a food partner may see: enough to pack and hand over food, and nothing clinical.
-const forPartner = ({ pickupCode, patientId, createdBy, ...rest }) => rest;
+const forPartner = ({ pickupCode, patientId, createdBy, survey, ...rest }) => rest;
 // What a patient sees about their own referral (they need their own pickup code).
 const forPatient = ({ createdBy, ...rest }) => rest;
 
@@ -151,8 +169,18 @@ function resultsFrom(referrals) {
     if (pick) (weeks[weekOf(pick.at)] ??= { referred: 0, pickedUp: 0 }).pickedUp += 1;
   }
 
+  // Survey answers as counts only. Comments stay out of results because they can name people.
+  const surveys = live.map((r) => r.survey).filter(Boolean);
+  const tally = (field, keys) => keys.map((key) => ({ key, count: surveys.filter((s) => s[field] === key).length }));
+
   return {
     generatedAt: new Date().toISOString(),
+    feedback: {
+      responses: surveys.length,
+      rating: tally("rating", [4, 3, 2, 1]),
+      ride: tally("ride", SURVEY.ride),
+      needsRideNext: tally("needsRideNext", SURVEY.needsRideNext),
+    },
     funnel: STEPS.map((step) => ({ step, count: live.filter((r) => reached(r, step)).length })),
     referrals: live.length,
     pickedUp: pickedUp.length,
@@ -174,6 +202,8 @@ function resultsFrom(referrals) {
           householdSize: r.householdSize,
           partner: r.partner,
           daysToPickup: pick ? Math.round(((Date.parse(pick.at) - Date.parse(r.createdAt)) / 86400000) * 10) / 10 : null,
+          rating: r.survey?.rating ?? null,
+          needsRideNext: r.survey?.needsRideNext ?? null,
         };
       }),
   };
@@ -310,6 +340,7 @@ export const handler = async (event) => {
         return reply(400, { error: `This referral is ${referral.status.replace("_", " ")}, so it can't be marked ${to.replace("_", " ")}.` });
       }
       if (to === "issue" && !text(body.note)) return reply(400, { error: "Say what went wrong so the care manager can follow up." });
+      if (to === "confirmed" && is("patient")) referral.survey = cleanSurvey(body.survey);
       await saveReferral(advance(referral, to, who.email, text(body.note, 500)));
       return reply(200, is("food-partner") ? forPartner(referral) : is("patient") ? forPatient(referral) : referral);
     }
@@ -446,6 +477,7 @@ function demoData(by) {
   const order = ["referred", "accepted", "packed", "picked_up", "confirmed"];
   const needs = ["Renal-friendly food box", "Groceries for the household", "Renal-friendly food box", "Fresh produce bag"];
   const referrals = [];
+  let confirmedCount = 0;
   // [patient index, days ago referred, furthest step, days per step, code, extra]
   const plan = [
     [0, 33, "confirmed", 2, "MAY3CA"], [1, 31, "confirmed", 3, "JAM4CD"], [2, 29, "confirmed", 2, "RQD7EF"],
@@ -468,6 +500,12 @@ function demoData(by) {
     if (furthest === "issue") r.history.push({ status: "issue", at: at(Math.max(daysAgo - 3 * perStep, 0), 17), by: "patient@demo", note: extra });
     if (furthest === "cancelled") r.history.push({ status: "cancelled", at: at(daysAgo - 2, 15), by, note: extra });
     r.status = r.history[r.history.length - 1].status;
+    if (r.status === "confirmed") {
+      // Made-up survey answers so the results page has something to show.
+      const answers = [[4, "own", "no"], [3, "someone", "yes"], [4, "program", "no"], [2, "none", "yes", "Hard to get a ride after treatment."], [4, "someone", "unsure"], [3, "own", "no"], [4, "program", "yes"]];
+      const [rating, ride, needsRideNext, comment] = answers[confirmedCount++ % answers.length];
+      r.survey = { rating, ride, needsRideNext, comment, at: r.history[r.history.length - 1].at };
+    }
     referrals.push(r);
   });
   return { patients, sessions, referrals };
