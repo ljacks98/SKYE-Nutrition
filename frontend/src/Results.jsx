@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+
+const money = (n) => n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 import { api } from "./api.js";
 import { STATUS_LABEL, RATING_LABEL, RIDE_LABEL, RIDE_NEXT_LABEL, when } from "./shared.jsx";
 
@@ -33,6 +35,15 @@ export default function Results() {
       ["People in those households", data.people],
       ["Problems reported", data.issues],
       ["Cancelled (not counted above)", data.cancelled],
+      ...(org ? [
+        [],
+        ["Organization results (patients with outcomes recorded)", org.tracked],
+        ["Patients enrolled", org.enrolled],
+        ["Hospital stays: 12 weeks before", org.hospital.before], ["Hospital stays: latest 12 weeks", org.hospital.after],
+        ["Emergency visits: 12 weeks before", org.er.before], ["Emergency visits: latest 12 weeks", org.er.after],
+        ["Missed treatments: 12 weeks before", org.missed.before], ["Missed treatments: latest 12 weeks", org.missed.after],
+        ["Patients with key labs in range now", `${org.labs.inRangeNow} of ${org.labs.withLabs}`],
+      ] : []),
       ...(fb ? [
         [],
         ["Patient survey responses", fb.responses],
@@ -53,12 +64,13 @@ export default function Results() {
   }
 
   const top = data.funnel[0]?.count || 1;
+  const org = data.organization;
   return (
     <main className="single report">
       <div className="report-head">
         <div>
-          <h2>Results for health plans</h2>
-          <p className="lede">Counts and timing only. No names, contact details, or medical information, so it's ready to share with a health plan.</p>
+          <h2>Results for partners</h2>
+          <p className="lede">Totals only. No names, contact details, or individual medical information, so it's ready to share with hospitals, clinics and health plans.</p>
           <p className="muted print-only">TrueMatch food referral results, generated {when(data.generatedAt)}</p>
         </div>
         <div className="report-actions">
@@ -71,6 +83,8 @@ export default function Results() {
         <p className="muted">No referrals yet. Results appear here once care managers start sending referrals.</p>
       ) : (
         <>
+          {org && <Organization org={org} pickedUp={data.pickedUp} referrals={data.referrals} median={data.medianDaysToPickup} />}
+
           <h3>Where referrals ended up</h3>
           <ol className="funnel">
             {data.funnel.map(({ step, count }) => (
@@ -143,3 +157,50 @@ export default function Results() {
     </main>
   );
 }
+
+// Totals across enrolled patients, before TrueMatch vs the latest 12 weeks, with a savings estimate the partner can adjust.
+function Organization({ org, pickedUp, referrals, median }) {
+  const [stayCost, setStayCost] = useState(15000);
+  const [erCost, setErCost] = useState(2500);
+  const staysAvoided = Math.max(org.hospital.before - org.hospital.after, 0);
+  const erAvoided = Math.max(org.er.before - org.er.after, 0);
+  const saved = staysAvoided * (Number(stayCost) || 0) + erAvoided * (Number(erCost) || 0);
+  const change = (before, after) => {
+    if (!before) return "No baseline yet";
+    const pctChange = Math.round(((after - before) / before) * 100);
+    return pctChange === 0 ? `Same as the 12 weeks before (${before})` : `${pctChange < 0 ? "Down" : "Up"} ${Math.abs(pctChange)}% from ${before} in the 12 weeks before`;
+  };
+  return (
+    <div className="org">
+      <h3>Organization results</h3>
+      <p className="lede">For hospitals, clinics and health plans. Totals for {org.tracked} of {org.enrolled} enrolled patients with outcomes recorded, comparing the 12 weeks before TrueMatch with the latest 12 weeks.</p>
+      <div className="org-figures">
+        <div className="org-figure"><span className="org-number">{org.enrolled}</span><span className="org-label">Patients enrolled</span><span className="org-detail">Received at least one food referral</span></div>
+        <div className="org-figure"><span className="org-number">{pct(pickedUp, referrals)}</span><span className="org-label">Pickups confirmed</span><span className="org-detail">{pickedUp} of {referrals} referrals{median !== null && median !== undefined ? `, median ${median} days to pickup` : ""}</span></div>
+        <div className="org-figure"><span className="org-number">{org.labs.inRangeNow} of {org.labs.withLabs}</span><span className="org-label">Patients with key labs in range</span><span className="org-detail">Potassium, phosphorus and albumin. {org.labs.inRangeBefore} before TrueMatch</span></div>
+        <div className="org-figure"><span className="org-number">{org.hospital.after}</span><span className="org-label">Hospital stays, latest 12 weeks</span><span className="org-detail">{change(org.hospital.before, org.hospital.after)}</span></div>
+        <div className="org-figure"><span className="org-number">{org.er.after}</span><span className="org-label">Emergency visits, latest 12 weeks</span><span className="org-detail">{change(org.er.before, org.er.after)}</span></div>
+        <div className="org-figure"><span className="org-number">{org.missed.after}</span><span className="org-label">Missed dialysis treatments, latest 12 weeks</span><span className="org-detail">{change(org.missed.before, org.missed.after)}</span></div>
+      </div>
+
+      <div className="savings">
+        <div className="savings-inputs">
+          <h4>Estimated savings</h4>
+          <label>Cost of one hospital stay
+            <span className="money-input">$<input type="number" min="0" step="100" value={stayCost} onChange={(e) => setStayCost(e.target.value)} /></span>
+          </label>
+          <label>Cost of one emergency visit
+            <span className="money-input">$<input type="number" min="0" step="50" value={erCost} onChange={(e) => setErCost(e.target.value)} /></span>
+          </label>
+          <p className="muted small">Example costs. Enter your organization's own.</p>
+        </div>
+        <div className="savings-result">
+          <p className="savings-math">{staysAvoided} fewer hospital {staysAvoided === 1 ? "stay" : "stays"} × {money(Number(stayCost) || 0)}<br />+ {erAvoided} fewer emergency {erAvoided === 1 ? "visit" : "visits"} × {money(Number(erCost) || 0)}</p>
+          <p className="savings-total">{money(saved)}</p>
+          <p className="small">Estimated savings over 12 weeks. Fewer visits happened alongside the program; this comparison doesn't prove the program caused them.</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+

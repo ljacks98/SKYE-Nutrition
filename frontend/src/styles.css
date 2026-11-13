@@ -339,6 +339,33 @@ header .account-nav button[aria-pressed="true"] { color: #fff; text-decoration: 
 .decision-note input { padding: 0.45rem 0.6rem; border: 1.5px solid #8794a6; border-radius: 4px; color: var(--ink); font: inherit; }
 .decision { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 0.75rem; }
 
+/* Organization results: figures on sign plates, and the savings estimate */
+.org { margin-top: 2rem; }
+.org-figures { display: grid; grid-template-columns: repeat(auto-fill, minmax(13.5rem, 1fr)); gap: 0.75rem; margin-top: 1.25rem; }
+.org-figure { display: grid; align-content: start; gap: 0.25rem; padding: 1rem 1.125rem; border: 1px solid var(--rule); border-top: 5px solid var(--sign); border-radius: 0 0 4px 4px; background: #fff; }
+.org-number { color: var(--sign); font-family: var(--display); font-size: 2.5rem; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+.org-label { font-weight: 700; }
+.org-detail { color: var(--slate); font-size: 0.875rem; }
+.savings { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 1.5rem 2.5rem; margin-top: 1.25rem; padding: 1.5rem; border-radius: 4px; background: var(--sign); color: #fff; }
+@media (max-width: 44rem) { .savings { grid-template-columns: minmax(0, 1fr); } }
+.savings h4 { margin-top: 0; color: #fff; font-size: 1.375rem; }
+.savings-inputs { display: grid; align-content: start; gap: 0.875rem; }
+.savings-inputs label { display: grid; gap: 0.25rem; color: #c6d3e6; font-size: 0.875rem; }
+.money-input { display: flex; align-items: center; gap: 0.375rem; color: #fff; font-family: var(--display); font-size: 1.5rem; font-weight: 700; }
+.money-input input { width: 9rem; padding: 0.25rem 0.5rem; border: 0; border-radius: 4px; color: var(--sign); font-family: var(--display); font-size: 1.5rem; font-weight: 700; }
+.savings .muted { color: #c6d3e6; }
+.savings :focus-visible { outline-color: var(--line); }
+.savings-result { display: grid; align-content: start; gap: 0.5rem; padding-left: 1.5rem; border-left: 5px solid var(--line); }
+.savings-math { color: #c6d3e6; font-variant-numeric: tabular-nums; }
+.savings-total { color: #fff; font-family: var(--display); font-size: 3.25rem; font-weight: 700; line-height: 1; }
+.savings-result .small { color: #c6d3e6; }
+.outcomes { display: grid; gap: 0.75rem; justify-items: start; }
+.outcomes table { width: auto; }
+.outcomes th[scope="row"] { padding-right: 1.5rem; color: var(--ink); font-size: 1rem; font-weight: 700; white-space: normal; }
+.outcomes input, .outcomes select { width: 9rem; padding: 0.375rem 0.5rem; border: 1.5px solid #8794a6; border-radius: 4px; font: inherit; color: var(--ink); background: #fff; }
+.outcomes select { width: 11rem; }
+@media print { .savings { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+
 /* Results for health plans */
 .report-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: start; gap: 1rem 2rem; }
 .report-actions { display: flex; flex-wrap: wrap; gap: 0.75rem; }
