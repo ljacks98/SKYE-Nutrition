@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "./api.js";
-import { Form, Steps, ConfirmButton, SurveySummary, STATUS_LABEL, when, shortDate } from "./shared.jsx";
+import { Form, Steps, ConfirmButton, SurveySummary, DietTags, FoodLists, STATUS_LABEL, CONDITION_LABEL, BENEFIT_LABEL, PLAN_TYPES, when, shortDate, firstName } from "./shared.jsx";
 import Results from "./Results.jsx";
 
 const CLINICS = ["Riverbend Dialysis Center", "Eastgate Kidney Care"];
@@ -74,6 +74,12 @@ function Patients() {
     setSelected(updated);
   }
 
+  async function saveHealth(values) {
+    const updated = await api(`/patients/${selected.id}/health`, values);
+    setPatients((list) => list.map((p) => (p.id === updated.id ? updated : p)));
+    setSelected(updated);
+  }
+
   async function addSession(values) {
     const session = await api(`/patients/${selected.id}/sessions`, values);
     setSessions((all) => ({ ...all, [session.patientId]: [session, ...(all[session.patientId] ?? [])] }));
@@ -128,6 +134,9 @@ function Patients() {
               <div><dt>Born</dt><dd>{selected.dob || "Not recorded"}</dd></div>
             </dl>
 
+            <h3>Food for their health</h3>
+            <HealthAndFood key={`health-${selected.id}-${selected.health?.updatedAt ?? ""}`} patient={selected} onSave={saveHealth} />
+
             <h3>Food referrals</h3>
             {theirReferrals.length === 0 && <p className="muted">No food referrals yet.</p>}
             <ul className="ref-list">
@@ -138,6 +147,7 @@ function Patients() {
                     <span className="muted">{r.ref}</span>
                   </div>
                   <p className="ref-meta">{r.partner}. Pickup at {r.pickupLocation}, {r.pickupWindow}. Pickup code <code>{r.pickupCode}</code></p>
+                  <DietTags diet={r.diet} />
                   <Steps referral={r} />
                   <SurveySummary survey={r.survey} />
                   {["referred", "accepted", "packed", "issue"].includes(r.status) && (
@@ -149,6 +159,7 @@ function Patients() {
             {selected.optedIn === "Yes" ? (
               <>
                 <h4>Send a new referral</h4>
+                <p className="muted small">{selected.food ? "The food partner will pack to the diet needs above. They won't see the diagnoses." : "This referral won't carry diet needs. Turn on tailored food above to add them."}</p>
                 {/* key gives each patient a fresh form, so details never carry over to the wrong person */}
                 <Form
                   key={`ref-${selected.id}`}
@@ -182,6 +193,83 @@ function Patients() {
         )}
       </section>
     </main>
+  );
+}
+
+// Diagnoses and health plan. TrueMatch turns them into what to choose, what to limit, and the food help the plan offers.
+function HealthAndFood({ patient, onSave }) {
+  const health = patient.health ?? {};
+  const plan = health.plan ?? {};
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  async function submit(event) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    setSaving(true); setError("");
+    try {
+      await onSave({
+        conditions: form.getAll("conditions"),
+        tailorFood: form.get("tailorFood"),
+        planName: form.get("planName"),
+        planType: form.get("planType"),
+        benefits: form.getAll("benefits"),
+      });
+    } catch (e) { setError(e.message); } finally { setSaving(false); }
+  }
+  return (
+    <div className="health">
+      <form className="form health-form" onSubmit={submit}>
+        <fieldset className="checks">
+          <legend>Diagnoses</legend>
+          {Object.entries(CONDITION_LABEL).map(([key, label]) => (
+            <label key={key}><input type="checkbox" name="conditions" value={key} defaultChecked={health.conditions?.includes(key)} /> {label}</label>
+          ))}
+        </fieldset>
+        <label>
+          Patient wants food tailored to their health
+          <select name="tailorFood" defaultValue={health.tailorFood ?? "No"}>
+            <option>Yes</option>
+            <option>No</option>
+          </select>
+        </label>
+        <label>
+          Health plan
+          <input name="planName" defaultValue={plan.name ?? ""} placeholder="Plan name" maxLength={80} />
+        </label>
+        <label>
+          Plan type
+          <select name="planType" defaultValue={plan.type ?? ""}>
+            <option value="">Not recorded</option>
+            {PLAN_TYPES.map((t) => <option key={t}>{t}</option>)}
+          </select>
+        </label>
+        <fieldset className="checks">
+          <legend>Food benefits the plan offers</legend>
+          {Object.entries(BENEFIT_LABEL).map(([key, label]) => (
+            <label key={key}><input type="checkbox" name="benefits" value={key} defaultChecked={plan.benefits?.includes(key)} /> {label}</label>
+          ))}
+        </fieldset>
+        {error && <p className="error">{error}</p>}
+        <button disabled={saving}>{saving ? "Saving…" : "Save food plan"}</button>
+        <p className="muted small">Diagnoses stay with the care team. Food partners only see the diet needs.</p>
+      </form>
+
+      {patient.food ? (
+        <div className="food-plan">
+          <DietTags diet={patient.food} />
+          <FoodLists food={patient.food} />
+          <h4>Ways to get this food</h4>
+          <ol className="food-options">
+            {patient.food.options.map((o) => <li key={o.title}><strong>{o.title}.</strong> {o.detail}</li>)}
+          </ol>
+          <p className="muted small">General guidance for the demo. A registered dietitian sets each patient's real limits.</p>
+        </div>
+      ) : (
+        <p className="muted food-plan">
+          {health.tailorFood === "Yes" ? "Check a diagnosis to build the food plan." : `Food isn't tailored for ${firstName(patient.name)} yet. Check their diagnoses and choose Yes once they agree.`}
+        </p>
+      )}
+    </div>
   );
 }
 

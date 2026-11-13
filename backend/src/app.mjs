@@ -159,6 +159,132 @@ function cleanOutcomes(input) {
   return out;
 }
 
+// ---- Medically tailored food: diagnoses and health plan -> what to choose, what to limit, what the plan may cover ----
+// General guidance for a demo, not a meal plan. The care team and a registered dietitian set each patient's real limits.
+const FOODS = {
+  leanProtein: "Fresh chicken, turkey, fish, and eggs",
+  lowKFruit: "Apples, berries, grapes, and pineapple",
+  lowKVeg: "Cabbage, cauliflower, green beans, peppers, and onions",
+  refinedGrains: "White rice, white bread, pasta, and unsalted crackers",
+  greens: "Spinach and other cooked greens",
+  highKFruit: "Bananas, oranges, melons, and dried fruit",
+  potatoes: "Potatoes and sweet potatoes",
+  tomatoes: "Tomatoes and avocado",
+  wholeGrains: "Oats, brown rice, and other whole grains",
+  beans: "Beans, lentils, and nuts",
+  lowFatDairy: "Low fat milk and yogurt",
+  healthyOil: "Olive or canola oil in place of butter",
+  cheese: "Cheese, especially processed cheese",
+  processedMeat: "Deli meat, hot dogs, bacon, and sausage",
+  cannedMeals: "Canned soup, frozen dinners, and instant noodles",
+  saltySnacks: "Chips, pickles, and other salty snacks",
+  darkCola: "Dark colas and drinks with added phosphate",
+  sweets: "Sweets, sugary drinks, and juice",
+  bigStarch: "Large portions of rice, bread, and pasta",
+  friedFat: "Fried foods, butter, and fatty red meat",
+};
+const CONDITIONS = {
+  dialysis: {
+    label: "Kidney failure on dialysis",
+    tags: ["Low potassium", "Low phosphorus", "Low sodium", "High protein"],
+    choose: ["leanProtein", "lowKFruit", "lowKVeg", "refinedGrains"],
+    limit: ["highKFruit", "potatoes", "tomatoes", "greens", "beans", "wholeGrains", "lowFatDairy", "cheese", "processedMeat", "cannedMeals", "saltySnacks", "darkCola"],
+    note: "Keep fluids within the limit the care team sets, counting soup, ice, and gelatin.",
+  },
+  diabetes: {
+    label: "Diabetes",
+    tags: ["Low added sugar", "Carb controlled"],
+    choose: ["lowKVeg", "greens", "leanProtein", "wholeGrains", "beans", "lowKFruit"],
+    limit: ["sweets", "bigStarch"],
+  },
+  hypertension: {
+    label: "High blood pressure",
+    tags: ["Low sodium"],
+    choose: ["lowKVeg", "greens", "highKFruit", "tomatoes", "wholeGrains", "beans", "lowFatDairy", "leanProtein"],
+    limit: ["cannedMeals", "processedMeat", "saltySnacks"],
+  },
+  cholesterol: {
+    label: "High cholesterol",
+    tags: ["Heart healthy"],
+    choose: ["wholeGrains", "beans", "leanProtein", "healthyOil", "lowKFruit", "lowKVeg"],
+    limit: ["friedFat", "processedMeat", "cheese"],
+  },
+};
+const PLAN_TYPES = ["Medicare Advantage", "Medicaid", "Medicare", "Commercial", "None or unknown"];
+const PLAN_BENEFITS = ["meals", "box", "card"]; // medically tailored meals, healthy food box, grocery allowance card
+
+function cleanHealth(input) {
+  const list = (value) => (Array.isArray(value) ? value : value ? [value] : []).map(String);
+  return {
+    conditions: [...new Set(list(input.conditions))].filter((c) => c in CONDITIONS),
+    tailorFood: input.tailorFood === "Yes" ? "Yes" : "No",
+    plan: {
+      name: text(input.planName, 80) || undefined,
+      type: PLAN_TYPES.includes(input.planType) ? input.planType : undefined,
+      benefits: [...new Set(list(input.benefits))].filter((b) => PLAN_BENEFITS.includes(b)),
+    },
+  };
+}
+
+// Food help the patient's plan may pay for, then the pantry box TrueMatch can always send.
+// `detail` is written for the care team, `forPatient` for the patient's own card.
+function foodOptionsFor(plan = {}) {
+  const name = plan.name || "The health plan";
+  const theirs = plan.name || "Your health plan";
+  const has = (b) => plan.benefits?.includes(b);
+  const options = [];
+  if (has("meals")) options.push({
+    title: "Medically tailored meals",
+    detail: `${name} lists this benefit. Meals are made for the diet and arrive ready to eat, which helps patients who don't cook.`,
+    forPatient: `${theirs} lists this benefit. Meals made for your diet arrive ready to eat. Ask your care manager to set it up.`,
+  });
+  if (has("card")) options.push({
+    title: "Grocery allowance card",
+    detail: `${name} lists this benefit. Spend it on the foods in the choose more list.`,
+    forPatient: `${theirs} lists this benefit. Use it for the foods on your choose more often list.`,
+  });
+  if (has("box")) options.push({
+    title: "Healthy food box",
+    detail: `${name} lists this benefit. Ask for a box that follows the diet needs below.`,
+    forPatient: `${theirs} lists this benefit. Ask your care manager to request a box that fits your diet.`,
+  });
+  options.push({
+    title: "Tailored pantry box",
+    detail: "Send a TrueMatch referral. The food partner packs to the diet needs, and never sees the diagnoses.",
+    forPatient: "Your care manager can send a referral, and the food partner packs to your diet needs. They never see your diagnoses.",
+  });
+  return options;
+}
+
+// The patient's food plan, or null when they haven't asked for tailored food or have no diagnoses recorded.
+// Where conditions disagree (beans help blood pressure but are limited on dialysis), the stricter advice wins.
+function foodPlanFor(patient) {
+  const h = patient?.health;
+  if (!h || h.tailorFood !== "Yes" || !h.conditions?.length) return null;
+  const conditions = h.conditions.map((c) => CONDITIONS[c]).filter(Boolean);
+  const limitIds = [...new Set(conditions.flatMap((c) => c.limit))];
+  const wanted = [...new Set(conditions.flatMap((c) => c.choose))];
+  const chooseIds = wanted.filter((id) => !limitIds.includes(id));
+  const notes = conditions.map((c) => c.note).filter(Boolean);
+  if (chooseIds.length < wanted.length) notes.push("Some foods that help one condition are limited for another, so the stricter advice is shown. Check with the dietitian.");
+  return {
+    tags: [...new Set(conditions.flatMap((c) => c.tags))],
+    choose: chooseIds.map((id) => FOODS[id]),
+    limit: limitIds.map((id) => FOODS[id]),
+    notes,
+    options: foodOptionsFor(h.plan),
+  };
+}
+
+// What travels with a referral to the food partner: diet needs only, no diagnoses and no plan details.
+const dietFor = (patient) => {
+  const plan = foodPlanFor(patient);
+  return plan ? { tags: plan.tags, choose: plan.choose, limit: plan.limit, notes: plan.notes } : undefined;
+};
+
+// Care managers see the computed food plan beside the record they entered.
+const withFood = (patient) => ({ ...patient, food: foodPlanFor(patient) });
+
 // Organization results: totals across enrolled patients, never names.
 function organizationFrom(patients, referrals) {
   const enrolledIds = new Set(referrals.filter((r) => r.status !== "cancelled").map((r) => r.patientId));
@@ -222,6 +348,7 @@ function resultsFrom(referrals, patients = []) {
     pickedUp: pickedUp.length,
     confirmed: live.filter((r) => reached(r, "confirmed")).length,
     issues: live.filter((r) => reached(r, "issue")).length,
+    tailored: live.filter((r) => r.diet).length, // referrals packed to a medical diet
     cancelled: referrals.length - live.length,
     households: pickedUp.length,
     people: pickedUp.reduce((sum, r) => sum + (Number(r.householdSize) || 0), 0),
@@ -240,6 +367,7 @@ function resultsFrom(referrals, patients = []) {
           daysToPickup: pick ? Math.round(((Date.parse(pick.at) - Date.parse(r.createdAt)) / 86400000) * 10) / 10 : null,
           rating: r.survey?.rating ?? null,
           needsRideNext: r.survey?.needsRideNext ?? null,
+          tailored: Boolean(r.diet),
         };
       }),
   };
@@ -268,7 +396,7 @@ export const handler = async (event) => {
       if (who.demo) me.demoPatients = (await scanAll(PATIENTS_TABLE)).map((p) => ({ id: p.id, name: p.name })).sort((a, b) => a.name.localeCompare(b.name));
       if (is("patient")) {
         const p = await patientFor(who);
-        me.patient = p ? { id: p.id, name: p.name, clinic: p.clinic, householdSize: p.householdSize } : null;
+        me.patient = p ? { id: p.id, name: p.name, clinic: p.clinic, householdSize: p.householdSize, food: foodPlanFor(p) } : null;
       }
       return reply(200, me);
     }
@@ -276,7 +404,7 @@ export const handler = async (event) => {
     // -- Patients and treatment sessions: care managers only --
     case "GET /patients": {
       if (!is("care-manager")) return forbidden();
-      return reply(200, await scanAll(PATIENTS_TABLE));
+      return reply(200, (await scanAll(PATIENTS_TABLE)).map(withFood));
     }
 
     case "POST /patients": {
@@ -297,7 +425,7 @@ export const handler = async (event) => {
         createdBy: who.email,
       };
       await db.send(new PutCommand({ TableName: PATIENTS_TABLE, Item: patient }));
-      return reply(201, patient);
+      return reply(201, withFood(patient));
     }
 
     case "GET /patients/{id}/sessions": {
@@ -319,7 +447,21 @@ export const handler = async (event) => {
       if (!outcomes) return reply(400, { error: "Use whole numbers from 0 to 365 for visits and missed treatments." });
       patient.outcomes = { ...outcomes, updatedAt: new Date().toISOString(), updatedBy: who.email };
       await db.send(new PutCommand({ TableName: PATIENTS_TABLE, Item: patient }));
-      return reply(200, patient);
+      return reply(200, withFood(patient));
+    }
+
+    // Diagnoses, health plan, and whether the patient wants food tailored to their health.
+    case "POST /patients/{id}/health": {
+      if (!is("care-manager")) return forbidden();
+      const patient = await getPatient(patientId);
+      if (!patient) return reply(404, { error: "This patient doesn't exist. Refresh the patient list." });
+      const health = cleanHealth(body);
+      if (health.tailorFood === "Yes" && health.conditions.length === 0) {
+        return reply(400, { error: "Check at least one diagnosis so TrueMatch knows how to tailor the food." });
+      }
+      patient.health = { ...health, updatedAt: new Date().toISOString(), updatedBy: who.email };
+      await db.send(new PutCommand({ TableName: PATIENTS_TABLE, Item: patient }));
+      return reply(200, withFood(patient));
     }
 
     case "POST /patients/{id}/sessions": {
@@ -367,6 +509,7 @@ export const handler = async (event) => {
         pickupWindow: text(body.pickupWindow),
         partner: text(body.partner) || DEFAULT_PARTNER,
         notes: text(body.notes, 500),
+        diet: dietFor(patient),
         pickupCode: newPickupCode(),
         createdAt: new Date().toISOString(),
         createdBy: who.email,
@@ -512,10 +655,21 @@ function demoData(by) {
     [2, 1, 3, 1, 4, 1, "out", "in"], [1, 1, 2, 2, 3, 2, "out", "out"], [1, 0, 2, 1, 2, 0, "out", "in"],
     [2, 1, 1, 1, 5, 2, "in", "in"], [1, 0, 2, 1, 1, 1, "out", "in"], null,
   ];
+  // Made-up diagnoses and plans: [conditions, wants tailored food, plan name, plan type, plan food benefits]
+  const demoHealth = [
+    [["dialysis", "diabetes"], "Yes", "Demo Advantage Plan", "Medicare Advantage", ["meals", "card"]],
+    [["dialysis", "hypertension"], "Yes", "Demo Medicaid Plan", "Medicaid", ["box"]],
+    [["dialysis", "diabetes", "hypertension"], "Yes", "Demo Advantage Plan", "Medicare Advantage", ["card"]],
+    [["dialysis", "cholesterol"], "Yes", undefined, "Medicare", []],
+    [["dialysis"], "No", "Demo Medicaid Plan", "Medicaid", ["box"]],
+    [["dialysis", "hypertension"], "Yes", undefined, "Commercial", []],
+  ];
   const patients = people.map(([name, dob, dryWeightKg, schedule, access, householdSize, clinic, optedIn], i) => {
     const o = demoOutcomes[i];
+    const [conditions, tailorFood, planName, planType, benefits] = demoHealth[i];
     return {
       id: `demo-pt-${i + 1}`, name, dob, dryWeightKg, schedule, access, householdSize, clinic: clinics[clinic], optedIn, createdBy: by,
+      health: { conditions, tailorFood, plan: { name: planName, type: planType, benefits }, updatedAt: new Date(now).toISOString(), updatedBy: by },
       outcomes: o ? {
         hospitalBefore: o[0], hospitalAfter: o[1], erBefore: o[2], erAfter: o[3], missedBefore: o[4], missedAfter: o[5],
         labsBefore: o[6], labsNow: o[7], updatedAt: new Date(now).toISOString(), updatedBy: by,
@@ -553,7 +707,7 @@ function demoData(by) {
       id: `demo-ref-${n + 1}`, ref: `TM-${1040 + n}`, patientId: p.id, patientName: p.name, householdSize: p.householdSize,
       need: needs[n % needs.length], pickupLocation: p.clinic, pickupWindow: n % 2 ? "Thursday 10 AM - 2 PM" : "Wednesday after treatment",
       partner: p.clinic === clinics[0] ? "Riverside Community Pantry" : "Eastside Food Collective", notes: "",
-      pickupCode: code, createdAt: at(daysAgo), createdBy: by, history: [],
+      diet: dietFor(p), pickupCode: code, createdAt: at(daysAgo), createdBy: by, history: [],
     };
     const last = furthest === "issue" ? steps.picked_up : furthest === "cancelled" ? steps.accepted : steps[furthest];
     for (let s = 0; s <= last; s++) r.history.push({ status: order[s], at: at(Math.max(daysAgo - s * perStep, 0), 10 + s), by: s === 0 ? by : s <= 3 ? "partner@demo" : "patient@demo" });

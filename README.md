@@ -29,6 +29,10 @@ DynamoDB ── Patients and Sessions tables (encrypted, point-in-time backups)
 | `backend/src/app.mjs` | The API: list and add patients, list and add treatment sessions |
 | `amplify.yml` | How Amplify builds and publishes the website |
 
+## Medically tailored food
+
+On each patient's page, the care manager records diagnoses (kidney failure on dialysis, diabetes, high blood pressure, high cholesterol), the health plan and the food benefits it offers, and whether the patient wants food tailored to their health. The API (`foodPlanFor` in `backend/src/app.mjs`) turns that into diet labels, a choose more list and a limit list. Where conditions disagree, the stricter advice wins. It also lists the plan's food options. Each new referral carries the diet needs to the food partner, never the diagnoses or plan details. The patient sees the same guidance on their card. This is general guidance for the demo; a registered dietitian sets real limits.
+
 ## Changing the website
 
 Amplify is connected to this repo's `main` branch. Commit a change to anything in `frontend/` and Amplify rebuilds and publishes the site in about 3 minutes. Watch progress in the AWS console under Amplify → TrueMatch → main.
