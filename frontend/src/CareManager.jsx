@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "./api.js";
-import { Form, Steps, ConfirmButton, STATUS_LABEL, when, shortDate } from "./shared.jsx";
+import { Form, Steps, ConfirmButton, SurveySummary, STATUS_LABEL, when, shortDate } from "./shared.jsx";
 import Results from "./Results.jsx";
 
 const CLINICS = ["Riverbend Dialysis Center", "Eastgate Kidney Care"];
@@ -133,6 +133,7 @@ function Patients() {
                   </div>
                   <p className="ref-meta">{r.partner}. Pickup at {r.pickupLocation}, {r.pickupWindow}. Pickup code <code>{r.pickupCode}</code></p>
                   <Steps referral={r} />
+                  <SurveySummary survey={r.survey} />
                   {["referred", "accepted", "packed", "issue"].includes(r.status) && (
                     <ConfirmButton label="Cancel referral" confirmLabel="Yes, cancel it" onConfirm={() => cancelReferral(r)} />
                   )}
@@ -185,6 +186,13 @@ function Board({ referrals, patients, onOpen }) {
     ["picked_up", "Picked up, waiting for the patient to confirm"],
   ];
   const closed = referrals.filter((r) => r.status === "confirmed").length;
+  // Patients who said they'll need a ride, newest answer per patient, so the care team can arrange transportation.
+  const rides = Object.values(
+    referrals
+      .filter((r) => r.survey)
+      .sort((a, b) => a.survey.at.localeCompare(b.survey.at))
+      .reduce((latest, r) => ({ ...latest, [r.patientId]: r }), {})
+  ).filter((r) => r.survey.needsRideNext === "yes");
   return (
     <>
       <h2>Referrals</h2>
@@ -209,6 +217,22 @@ function Board({ referrals, patients, onOpen }) {
           </div>
         );
       })}
+      {rides.length > 0 && (
+        <div className="board-group ride">
+          <h3>Need a ride for their next pickup <span className="count">{rides.length}</span></h3>
+          <ul className="board-list">
+            {rides.map((r) => (
+              <li key={r.id}>
+                <button onClick={() => onOpen(r.patientId)}>
+                  <strong>{r.patientName}</strong>
+                  <span>{r.survey.comment || "Said they'll need a ride next time."}</span>
+                  <span className="muted">Answered {shortDate(r.survey.at)}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {patients.length === 0 && <p className="muted">Add a patient on the left to get started.</p>}
     </>
   );

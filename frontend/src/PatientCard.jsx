@@ -1,7 +1,22 @@
 import { useEffect, useState } from "react";
 import QRCode from "qrcode";
 import { api } from "./api.js";
-import { Steps, STATUS_LABEL, firstName, shortDate } from "./shared.jsx";
+import { Steps, STATUS_LABEL, RATING_LABEL, RIDE_LABEL, RIDE_NEXT_LABEL, firstName, shortDate } from "./shared.jsx";
+
+// One survey question as large tap-friendly choices.
+function Choices({ legend, name, options, answers, setAnswers }) {
+  return (
+    <fieldset className="choices">
+      <legend>{legend}</legend>
+      {options.map(([value, label]) => (
+        <label key={value} className={String(answers[name]) === String(value) ? "picked" : ""}>
+          <input type="radio" name={name} value={value} checked={String(answers[name]) === String(value)} onChange={() => setAnswers((a) => ({ ...a, [name]: value }))} />
+          {label}
+        </label>
+      ))}
+    </fieldset>
+  );
+}
 
 // What a patient sees: their next pickup with the code to show at handoff, and a way to say how it went.
 export default function PatientCard() {
@@ -56,6 +71,8 @@ export default function PatientCard() {
 function CurrentPickup({ referral: r, onChange }) {
   const [qr, setQr] = useState("");
   const [problem, setProblem] = useState(false);
+  const [surveyOpen, setSurveyOpen] = useState(false);
+  const [answers, setAnswers] = useState({});
   const [note, setNote] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -64,11 +81,11 @@ function CurrentPickup({ referral: r, onChange }) {
     QRCode.toDataURL(`truematch:${r.pickupCode}`, { margin: 1, width: 240, color: { dark: "#13294b", light: "#ffffff" } }).then(setQr);
   }, [r.pickupCode]);
 
-  async function send(status) {
+  async function send(status, survey) {
     setBusy(true);
     setError("");
     try {
-      onChange(await api(`/referrals/${r.id}/status`, { status, note }));
+      onChange(await api(`/referrals/${r.id}/status`, { status, note, survey }));
       setProblem(false);
       setNote("");
     } catch (e) {
@@ -95,13 +112,30 @@ function CurrentPickup({ referral: r, onChange }) {
         </dl>
         <Steps referral={r} />
 
-        {r.status === "picked_up" && !problem && (
+        {r.status === "picked_up" && !problem && !surveyOpen && (
           <div className="patient-actions">
             <p>Did you get everything?</p>
-            <button disabled={busy} onClick={() => send("confirmed")}>Yes, I got my food</button>
+            <button onClick={() => setSurveyOpen(true)}>Yes, I got my food</button>
             <button className="quiet" onClick={() => setProblem(true)}>Something was wrong</button>
           </div>
         )}
+        {r.status === "picked_up" && surveyOpen && (
+          <form className="survey" onSubmit={(e) => { e.preventDefault(); send("confirmed", answers); }}>
+            <p className="survey-intro">Glad you got it. Three quick questions help your care team plan your next pickup.</p>
+            <Choices legend="How was this pickup?" name="rating" options={[4, 3, 2, 1].map((n) => [n, RATING_LABEL[n]])} answers={answers} setAnswers={setAnswers} />
+            <Choices legend="How did you get to the pickup?" name="ride" options={Object.entries(RIDE_LABEL)} answers={answers} setAnswers={setAnswers} />
+            <Choices legend="Will you need a ride next time?" name="needsRideNext" options={Object.entries(RIDE_NEXT_LABEL)} answers={answers} setAnswers={setAnswers} />
+            <label className="survey-comment">
+              Anything else your care team should know? (optional)
+              <textarea rows={2} value={answers.comment ?? ""} onChange={(e) => setAnswers((a) => ({ ...a, comment: e.target.value }))} />
+            </label>
+            <div className="patient-actions">
+              <button disabled={busy}>{busy ? "Sending…" : "Send and confirm pickup"}</button>
+              <button type="button" className="quiet" disabled={busy} onClick={() => send("confirmed")}>Skip the questions</button>
+            </div>
+          </form>
+        )}
+        {r.status === "confirmed" && <p className="exit-note">Thank you. Your care team has your answers.</p>}
         {waiting && !problem && (
           <div className="patient-actions">
             <button className="quiet" onClick={() => setProblem(true)}>I can't make this pickup</button>

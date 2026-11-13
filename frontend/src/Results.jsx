@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "./api.js";
-import { STATUS_LABEL, when } from "./shared.jsx";
+import { STATUS_LABEL, RATING_LABEL, RIDE_LABEL, RIDE_NEXT_LABEL, when } from "./shared.jsx";
 
 const pct = (part, whole) => (whole ? `${Math.round((part / whole) * 100)}%` : "—");
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
@@ -17,6 +17,9 @@ export default function Results() {
   if (error) return <main className="single report"><p className="error">{error}</p></main>;
   if (!data) return <main className="single report"><p className="muted">Loading results…</p></main>;
 
+  const fb = data.feedback?.responses ? data.feedback : null;
+  const count = (list, key) => list.find((x) => x.key === key)?.count ?? 0;
+
   function downloadCsv() {
     const rows = [
       ["TrueMatch food referral results", `Generated ${when(data.generatedAt)}`],
@@ -30,9 +33,16 @@ export default function Results() {
       ["People in those households", data.people],
       ["Problems reported", data.issues],
       ["Cancelled (not counted above)", data.cancelled],
+      ...(fb ? [
+        [],
+        ["Patient survey responses", fb.responses],
+        ...fb.rating.map((x) => [`Rated pickup: ${RATING_LABEL[x.key]}`, x.count]),
+        ...fb.ride.map((x) => [`Got there: ${RIDE_LABEL[x.key]}`, x.count]),
+        ...fb.needsRideNext.map((x) => [`Needs a ride next time: ${RIDE_NEXT_LABEL[x.key]}`, x.count]),
+      ] : []),
       [],
-      ["Referral", "Referred on", "Household size", "Food partner", "Status", "Days to pickup"],
-      ...data.rows.map((r) => [r.ref, r.referredOn, r.householdSize, r.partner, STATUS_LABEL[r.status], r.daysToPickup ?? ""]),
+      ["Referral", "Referred on", "Household size", "Food partner", "Status", "Days to pickup", "Patient rating", "Needs a ride next time"],
+      ...data.rows.map((r) => [r.ref, r.referredOn, r.householdSize, r.partner, STATUS_LABEL[r.status], r.daysToPickup ?? "", r.rating ? RATING_LABEL[r.rating] : "", r.needsRideNext ? RIDE_NEXT_LABEL[r.needsRideNext] : ""]),
     ];
     const csv = rows.map((row) => row.map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
     const link = document.createElement("a");
@@ -81,6 +91,26 @@ export default function Results() {
             <li><strong>{plural(data.issues, "problem", "problems")}</strong> reported by patients{data.cancelled ? `, and ${plural(data.cancelled, "referral", "referrals")} cancelled (left out of the counts above)` : ""}.</li>
           </ul>
 
+          <h3>What patients said</h3>
+          {fb ? (
+            <>
+              <p className="lede">{fb.responses} {fb.responses === 1 ? "patient" : "patients"} answered the short survey when they confirmed pickup.</p>
+              <ul className="findings">
+                <li><strong>{pct(count(fb.rating, 4) + count(fb.rating, 3), fb.responses)}</strong> rated their pickup good or great.</li>
+                <li><strong>{pct(count(fb.ride, "none"), fb.responses)}</strong> didn't have a ride, and <strong>{pct(count(fb.ride, "program"), fb.responses)}</strong> got one from their clinic or health plan.</li>
+                <li><strong>{pct(count(fb.needsRideNext, "yes"), fb.responses)}</strong> said they will need a ride next time.</li>
+              </ul>
+              <div className="table-wrap">
+                <table>
+                  <thead><tr><th>How they got to the pickup</th><th>Patients</th></tr></thead>
+                  <tbody>{fb.ride.map((x) => <tr key={x.key}><td>{RIDE_LABEL[x.key]}</td><td>{x.count}</td></tr>)}</tbody>
+                </table>
+              </div>
+            </>
+          ) : (
+            <p className="muted">No survey answers yet. Patients answer three quick questions when they confirm pickup.</p>
+          )}
+
           <h3>By week</h3>
           <div className="table-wrap">
             <table>
@@ -96,12 +126,13 @@ export default function Results() {
           <h3>Every referral</h3>
           <div className="table-wrap">
             <table>
-              <thead><tr><th>Referral</th><th>Referred on</th><th>Household</th><th>Food partner</th><th>Status</th><th>Days to pickup</th></tr></thead>
+              <thead><tr><th>Referral</th><th>Referred on</th><th>Household</th><th>Food partner</th><th>Status</th><th>Days to pickup</th><th>Rating</th><th>Ride next time</th></tr></thead>
               <tbody>
                 {data.rows.map((r) => (
                   <tr key={r.ref + r.referredOn}>
                     <td>{r.ref}</td><td>{r.referredOn}</td><td>{r.householdSize}</td><td>{r.partner}</td>
                     <td>{STATUS_LABEL[r.status]}</td><td>{r.daysToPickup ?? "—"}</td>
+                    <td>{r.rating ? RATING_LABEL[r.rating] : "—"}</td><td>{r.needsRideNext ? RIDE_NEXT_LABEL[r.needsRideNext] : "—"}</td>
                   </tr>
                 ))}
               </tbody>

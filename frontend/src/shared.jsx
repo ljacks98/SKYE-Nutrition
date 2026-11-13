@@ -10,6 +10,32 @@ export const STEPS = [
 ];
 export const STATUS_LABEL = { ...Object.fromEntries(STEPS), confirmed: "Patient confirmed", issue: "Problem reported", cancelled: "Cancelled" };
 
+// Patient survey wording. The server stores the keys.
+export const RATING_LABEL = { 4: "Great", 3: "Good", 2: "Okay", 1: "Not good" };
+export const RIDE_LABEL = {
+  own: "I had my own way there",
+  someone: "Family or a friend gave me a ride",
+  program: "The clinic or my health plan gave me a ride",
+  none: "I didn't have a ride",
+};
+export const RIDE_NEXT_LABEL = { yes: "Yes", no: "No", unsure: "Not sure" };
+
+// One line a care manager can read at a glance.
+export function SurveySummary({ survey }) {
+  if (!survey) return null;
+  const parts = [
+    survey.rating && `Rated the pickup ${RATING_LABEL[survey.rating].toLowerCase()}`,
+    survey.ride && RIDE_LABEL[survey.ride].replace(/^I /, "they ").replace(/\bmy\b/g, "their").replace(/\bme\b/g, "them").replace(/^./, (c) => c.toLowerCase()),
+    survey.needsRideNext && (survey.needsRideNext === "yes" ? "needs a ride next time" : survey.needsRideNext === "no" ? "doesn't need a ride next time" : "not sure about a ride next time"),
+  ].filter(Boolean);
+  return (
+    <div className={`survey-summary ${survey.needsRideNext === "yes" ? "needs-ride" : ""}`}>
+      <p><strong>Patient feedback:</strong> {parts.join(", ")}.</p>
+      {survey.comment && <p className="notes">"{survey.comment}"</p>}
+    </div>
+  );
+}
+
 export const ROLE_LABEL = {
   "care-manager": "Care manager",
   "food-partner": "Food partner",
