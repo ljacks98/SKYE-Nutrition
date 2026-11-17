@@ -20,7 +20,7 @@ const { PATIENTS_TABLE, SESSIONS_TABLE, REFERRALS_TABLE, REQUESTS_TABLE, USER_PO
 const LIMITS = { highSystolic: 180, lowSystolic: 90, kgAboveDryWeight: 1 };
 
 const ROLES = ["care-manager", "food-partner", "patient"];
-const REQUESTABLE = [...ROLES, "admin"]; // account types a person can ask an admin for
+const REQUESTABLE = [...ROLES, "demo", "admin"]; // what a person can ask an admin for; demo = see every view, for teammates and reviewers
 // Routes anyone signed in may use, even before an admin approves them.
 const OPEN_ROUTES = ["GET /me", "POST /access-requests"];
 const ADMIN_ROUTES = ["GET /access-requests", "POST /access-requests/{id}/decision"];
@@ -563,6 +563,7 @@ export const handler = async (event) => {
       if (!REQUESTABLE.includes(role)) return reply(400, { error: "Choose the kind of account you need." });
       if (!text(body.name)) return reply(400, { error: "Enter your name so the admin knows who's asking." });
       if (role === who.role) return reply(400, { error: "You already have that kind of account." });
+      if (role === "demo" && who.demo) return reply(400, { error: "You can already see the full demo." });
       const existing = await getRequest(who.sub);
       const request = {
         id: who.sub,
@@ -598,7 +599,7 @@ export const handler = async (event) => {
       if (decision === "approve") {
         const Username = request.username || request.email;
         await cognito.send(new AdminAddUserToGroupCommand({ UserPoolId: USER_POOL_ID, Username, GroupName: request.role }));
-        // One main account type at a time: moving to a new one removes the old one. Admin is added on top.
+        // One main account type at a time: moving to a new one removes the old one. Admin and demo are added on top.
         if (ROLES.includes(request.role)) {
           for (const GroupName of ROLES.filter((r) => r !== request.role)) {
             await cognito.send(new AdminRemoveUserFromGroupCommand({ UserPoolId: USER_POOL_ID, Username, GroupName })).catch(() => {});
