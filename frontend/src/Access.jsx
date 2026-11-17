@@ -4,6 +4,7 @@ import { api } from "./api.js";
 import { Form, ROLE_LABEL, when } from "./shared.jsx";
 
 const REQUEST_OPTIONS = [
+  ["demo", "Full demo: review every view with made-up patients (for teammates and reviewers)"],
   ["care-manager", "Care manager: refer patients and track their food pickups"],
   ["food-partner", "Food partner: pack orders and confirm pickups"],
   ["patient", "Patient: see my pickups and pickup code"],
@@ -12,7 +13,7 @@ const REQUEST_OPTIONS = [
 
 // Asks an admin for an account type. Used by new accounts and by people who need a different one.
 export function RequestForm({ me, onSent, exclude }) {
-  const options = REQUEST_OPTIONS.filter(([role]) => role !== exclude && !(role === "admin" && me.admin));
+  const options = REQUEST_OPTIONS.filter(([role]) => role !== exclude && !(role === "admin" && me.admin) && !(role === "demo" && me.demo));
   return (
     <Form
       fields={[

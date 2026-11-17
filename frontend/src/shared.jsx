@@ -41,6 +41,7 @@ export const ROLE_LABEL = {
   "food-partner": "Food partner",
   patient: "Patient",
   admin: "Admin",
+  demo: "Full demo",
 };
 
 export const when = (iso) => new Date(iso).toLocaleString([], { dateStyle: "medium", timeStyle: "short" });

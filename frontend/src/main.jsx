@@ -31,7 +31,10 @@ const SignInHeader = () => (
 
 // Below the card: a plain reminder that this is a demo.
 const SignInNote = () => (
-  <p className="signin-note">Demo system. Use made-up patients only, never real health information.</p>
+  <p className="signin-note">
+    Demo system. Use made-up patients only, never real health information.
+    Reviewing TrueMatch? Create an account, then request Full demo access.
+  </p>
 );
 
 // <Authenticator> handles sign-in, creating an account, the first-time password change, MFA setup,
