@@ -88,7 +88,10 @@ function whoIs(event) {
   const claims = event.requestContext.authorizer.jwt.claims;
   const groups = groupsOf(claims);
   const headers = Object.fromEntries(Object.entries(event.headers ?? {}).map(([k, v]) => [k.toLowerCase(), v]));
-  const demo = groups.includes("demo");
+  // Admins can open every view (care manager, food partner, patient) with the same switcher demo accounts use,
+  // so the person approving access can see what each account type sees. Before real patient data,
+  // narrow this so admins only manage access (least privilege).
+  const demo = groups.includes("demo") || groups.includes("admin");
   const role = demo
     ? (ROLES.includes(headers["x-view-as"]) ? headers["x-view-as"] : "care-manager")
     : ROLES.find((r) => groups.includes(r)) ?? null;
