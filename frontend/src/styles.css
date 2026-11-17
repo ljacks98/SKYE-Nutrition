@@ -380,6 +380,31 @@ header .account-nav button[aria-pressed="true"] { color: #fff; text-decoration: 
 .table-wrap { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
 th, td { padding: 0.5rem 1.25rem 0.5rem 0; border-bottom: 1px solid var(--rule); text-align: left; white-space: nowrap; }
+/* ---------- Messages about a pickup: texts, notes, replies ---------- */
+.thread { display: grid; gap: 0.5rem; margin: 0.75rem 0; padding: 0; list-style: none; }
+.msg { max-width: 36rem; padding: 0.5rem 0.75rem; border-left: 4px solid var(--rule); border-radius: 4px; background: var(--platform); }
+.msg p { margin: 0.125rem 0 0; }
+.msg-meta { color: var(--slate); font-size: 0.8125rem; }
+.msg.from-patient { justify-self: end; border-left-color: var(--line); background: #fff; border: 1px solid var(--rule); border-left: 4px solid var(--line); }
+.msg.from-care-manager { border-left-color: var(--sign); background: #fff; border: 1px solid var(--rule); border-left: 4px solid var(--sign); }
+.message-box { display: grid; gap: 0.5rem; max-width: 36rem; margin-top: 0.75rem; }
+.message-box label { display: grid; gap: 0.25rem; color: var(--slate); font-size: 0.875rem; }
+.message-box textarea { font: inherit; padding: 0.5rem; border: 1px solid var(--rule); border-radius: 4px; }
+.message-box p.small { margin: 0; }
+.message-box button { justify-self: start; }
+.msg-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.75rem; }
+details.pickup-messages { margin-top: 0.75rem; padding: 0.5rem 0.75rem; border: 1px solid var(--rule); border-radius: 4px; }
+details.pickup-messages summary { cursor: pointer; font-weight: 700; }
+.badge-new, .badge-ok { margin-left: 0.5rem; padding: 0.0625rem 0.5rem; border-radius: 3px; font-size: 0.8125rem; font-weight: 700; }
+.badge-new { background: var(--signal); color: #fff; }
+.badge-ok { border: 1.5px solid var(--sign); color: var(--sign); }
+.board-group.messages h3 .count { background: var(--signal); color: #fff; }
+details.texts-setting { margin: 0.5rem 0 1.5rem; }
+details.texts-setting summary { cursor: pointer; color: var(--sign); font-weight: 700; }
+.patient-messages { margin-top: 2rem; }
+.text-reply { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin: 0.5rem 0; padding: 0.75rem; background: var(--platform); border-radius: 4px; }
+.text-reply p { flex-basis: 100%; margin: 0; }
+
 /* ---------- Food for their health: diet needs, choose and limit lists, plan options ---------- */
 .health { display: grid; gap: 1.25rem; }
 .health-form .checks { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 0.5rem 1.5rem; margin: 0; padding: 0; border: 0; }

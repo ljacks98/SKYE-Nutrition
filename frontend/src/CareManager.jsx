@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "./api.js";
-import { Form, Steps, ConfirmButton, SurveySummary, DietTags, FoodLists, STATUS_LABEL, CONDITION_LABEL, BENEFIT_LABEL, PLAN_TYPES, when, shortDate, firstName } from "./shared.jsx";
+import { Form, Steps, ConfirmButton, SurveySummary, DietTags, FoodLists, MessageThread, MessageBox, STATUS_LABEL, CONDITION_LABEL, BENEFIT_LABEL, PLAN_TYPES, when, shortDate, firstName } from "./shared.jsx";
 import Results from "./Results.jsx";
 
 const CLINICS = ["Riverbend Dialysis Center", "Eastgate Kidney Care"];
@@ -17,6 +17,8 @@ const PATIENT_FIELDS = [
   ["clinic", "Clinic (pickup location)", CLINICS],
   ["optedIn", "Opted in to food referrals", ["Yes", "No"]],
   ["patientEmail", "Patient's email for their own login", "email", { optional: true, placeholder: "Optional" }],
+  ["phone", "Mobile phone for pickup texts", "tel", { optional: true, placeholder: "(919) 555-0123" }],
+  ["textsOk", "Patient agreed to pickup texts", ["No", "Yes"]],
 ];
 
 const SESSION_FIELDS = [
@@ -90,6 +92,14 @@ function Patients() {
     setReferrals((list) => [referral, ...(list ?? [])]);
   }
 
+  async function saveContact(values) {
+    const updated = await api(`/patients/${selected.id}/contact`, values);
+    setPatients((list) => list.map((p) => (p.id === updated.id ? updated : p)));
+    setSelected(updated);
+  }
+
+  const replaceReferral = (updated) => setReferrals((list) => list.map((r) => (r.id === updated.id ? updated : r)));
+
   async function cancelReferral(referral) {
     const updated = await api(`/referrals/${referral.id}/status`, { status: "cancelled", note: "Cancelled by care manager" });
     setReferrals((list) => list.map((r) => (r.id === updated.id ? updated : r)));
@@ -128,11 +138,24 @@ function Patients() {
               <div><dt>Clinic</dt><dd>{selected.clinic || "Not recorded"}</dd></div>
               <div><dt>Food referrals</dt><dd>{selected.optedIn === "Yes" ? "Opted in" : "Not opted in"}</dd></div>
               <div><dt>Patient login</dt><dd>{selected.patientEmail || "None"}</dd></div>
+              <div><dt>Pickup texts</dt><dd>{selected.textsOk === "Yes" ? `On, to ${selected.phone}` : `Off${selected.phone ? `, number ${selected.phone}` : ""}`}</dd></div>
               <div><dt>Schedule</dt><dd>{selected.schedule}</dd></div>
               <div><dt>Access</dt><dd>{selected.access}</dd></div>
               <div><dt>Dry weight</dt><dd>{selected.dryWeightKg} kg</dd></div>
               <div><dt>Born</dt><dd>{selected.dob || "Not recorded"}</dd></div>
             </dl>
+            <details className="texts-setting" key={`texts-${selected.id}-${selected.textsOk}-${selected.phone ?? ""}`}>
+              <summary>Change pickup texts</summary>
+              <Form
+                fields={[
+                  ["phone", "Mobile phone", "tel", { optional: true, defaultValue: selected.phone ?? "", placeholder: "(919) 555-0123" }],
+                  ["textsOk", "Patient agreed to pickup texts", ["No", "Yes"], { defaultValue: selected.textsOk ?? "No" }],
+                ]}
+                submitLabel="Save texting settings"
+                onSubmit={saveContact}
+              />
+              <p className="muted small">Texts say when food is ready and give the pickup code. They never mention diagnoses or diet.</p>
+            </details>
 
             <h3>Food for their health</h3>
             <HealthAndFood key={`health-${selected.id}-${selected.health?.updatedAt ?? ""}`} patient={selected} onSave={saveHealth} />
@@ -150,6 +173,7 @@ function Patients() {
                   <DietTags diet={r.diet} />
                   <Steps referral={r} />
                   <SurveySummary survey={r.survey} />
+                  <PickupMessages referral={r} patient={selected} onChange={replaceReferral} />
                   {["referred", "accepted", "packed", "issue"].includes(r.status) && (
                     <ConfirmButton label="Cancel referral" confirmLabel="Yes, cancel it" onConfirm={() => cancelReferral(r)} />
                   )}
@@ -193,6 +217,41 @@ function Patients() {
         )}
       </section>
     </main>
+  );
+}
+
+// The message thread on one pickup, with the care manager's reply, reminder, and handled buttons.
+function PickupMessages({ referral: r, patient, onChange }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const count = r.messages?.length ?? 0;
+  const beforePickup = ["referred", "accepted", "packed"].includes(r.status);
+  async function post(path, body = {}) {
+    setBusy(true); setError("");
+    try { onChange(await api(path, body)); } catch (e) { setError(e.message); } finally { setBusy(false); }
+  }
+  return (
+    <details className="pickup-messages" open={r.needsReply || undefined}>
+      <summary>
+        Messages ({count})
+        {r.needsReply && <span className="badge-new">New message</span>}
+        {r.comingConfirmed && beforePickup && <span className="badge-ok">Said they'll be there</span>}
+      </summary>
+      <MessageThread messages={r.messages} viewer="care-manager" />
+      <MessageBox
+        label="Reply to the patient"
+        placeholder="They'll see this on their TrueMatch card"
+        sendLabel="Send reply"
+        onSend={(body) => api(`/referrals/${r.id}/messages`, { body }).then(onChange)}
+      />
+      <div className="msg-actions">
+        {beforePickup && patient.textsOk === "Yes" && (
+          <button className="quiet" disabled={busy} onClick={() => post(`/referrals/${r.id}/remind`)}>Text a pickup reminder</button>
+        )}
+        {r.needsReply && <button className="quiet" disabled={busy} onClick={() => post(`/referrals/${r.id}/handled`)}>Mark as handled</button>}
+      </div>
+      {error && <p className="error">{error}</p>}
+    </details>
   );
 }
 
@@ -346,6 +405,25 @@ function Board({ referrals, patients, onOpen }) {
     <>
       <h2>Referrals</h2>
       <p className="lede">{referrals.length === 0 ? "No referrals yet. Choose a patient to send the first one." : `${closed} of ${referrals.filter((r) => r.status !== "cancelled").length} referrals are closed: the patient confirmed they got their food.`}</p>
+      {referrals.some((r) => r.needsReply) && (
+        <div className="board-group messages">
+          <h3>New messages from patients <span className="count">{referrals.filter((r) => r.needsReply).length}</span></h3>
+          <ul className="board-list">
+            {referrals.filter((r) => r.needsReply).map((r) => {
+              const last = [...(r.messages ?? [])].reverse().find((m) => m.from === "patient");
+              return (
+                <li key={r.id}>
+                  <button onClick={() => onOpen(r.patientId)}>
+                    <strong>{r.patientName}</strong>
+                    <span>"{last?.body}"</span>
+                    <span className="muted">{last?.via === "text" ? "By text" : "Note"} {last && shortDate(last.at)}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
       {groups.map(([status, label]) => {
         const list = referrals.filter((r) => r.status === status);
         if (list.length === 0) return null;

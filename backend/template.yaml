@@ -137,6 +137,10 @@ Resources:
         AddSession: { Type: HttpApi, Properties: { ApiId: !Ref Api, Method: POST, Path: "/patients/{id}/sessions" } }
         RecordOutcomes: { Type: HttpApi, Properties: { ApiId: !Ref Api, Method: POST, Path: "/patients/{id}/outcomes" } }
         RecordHealth: { Type: HttpApi, Properties: { ApiId: !Ref Api, Method: POST, Path: "/patients/{id}/health" } }
+        RecordContact: { Type: HttpApi, Properties: { ApiId: !Ref Api, Method: POST, Path: "/patients/{id}/contact" } }
+        PickupMessage: { Type: HttpApi, Properties: { ApiId: !Ref Api, Method: POST, Path: "/referrals/{id}/messages" } }
+        PickupReminder: { Type: HttpApi, Properties: { ApiId: !Ref Api, Method: POST, Path: "/referrals/{id}/remind" } }
+        MessageHandled: { Type: HttpApi, Properties: { ApiId: !Ref Api, Method: POST, Path: "/referrals/{id}/handled" } }
         Me: { Type: HttpApi, Properties: { ApiId: !Ref Api, Method: GET, Path: /me } }
         ListReferrals: { Type: HttpApi, Properties: { ApiId: !Ref Api, Method: GET, Path: /referrals } }
         AddReferral: { Type: HttpApi, Properties: { ApiId: !Ref Api, Method: POST, Path: /referrals } }

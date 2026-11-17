@@ -130,7 +130,7 @@ async function patientFor(who) {
 }
 
 // What a food partner may see: enough to pack and hand over food, and nothing clinical.
-const forPartner = ({ pickupCode, patientId, createdBy, survey, ...rest }) => rest;
+const forPartner = ({ pickupCode, patientId, createdBy, survey, messages, needsReply, lastReminderAt, ...rest }) => rest;
 // What a patient sees about their own referral (they need their own pickup code).
 const forPatient = ({ createdBy, ...rest }) => rest;
 
@@ -146,6 +146,69 @@ const MOVES = {
   patient: { referred: ["issue"], accepted: ["issue"], packed: ["issue"], picked_up: ["confirmed", "issue"] },
   "care-manager": { referred: ["cancelled"], accepted: ["cancelled"], packed: ["cancelled"], issue: ["cancelled"] },
 };
+
+// ---- Text messages and notes on each pickup ----
+// In the demo, texts are recorded on the referral and shown on the patient's card instead of going to a real phone.
+// To send real texts, register a number in AWS End User Messaging SMS and send from sendText below.
+// Texts never include diagnoses or diet details, since anyone holding the phone can read them.
+const SAFETY_LINE = "For medical questions, call your clinic. In an emergency, call 911.";
+const textsOk = (patient) => patient?.textsOk === "Yes" && Boolean(patient.phone);
+
+function cleanPhone(value) {
+  const digits = String(value ?? "").replace(/\D/g, "").replace(/^1(?=\d{10}$)/, "");
+  if (!digits) return "";
+  return digits.length === 10 ? `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}` : null; // null = not a valid US number
+}
+
+function addMessage(referral, from, via, body, extra = {}, at = new Date().toISOString()) {
+  referral.messages = [...(referral.messages ?? []), { id: randomUUID(), at, from, via, body, ...extra }];
+  if (from === "patient") referral.needsReply = true; // shows on the care manager's board until handled
+  if (from === "care-manager") referral.needsReply = false;
+  return referral;
+}
+
+const TEXTS = {
+  referred: (r) => `TrueMatch: Your care team set up a food pickup for you from ${r.partner}. We'll text you when it's ready. Reply STOP to stop texts.`,
+  packed: (r, place) => `TrueMatch: Your food is ready. Pick it up ${r.pickupWindow} at ${place}. Your code is ${r.pickupCode}. Reply 1 if you'll be there or 2 if you can't make it.`,
+  reminder: (r, place) => `TrueMatch reminder: Your food pickup is ${r.pickupWindow} at ${place}. Your code is ${r.pickupCode}. Reply 1 if you'll be there or 2 if you can't make it.`,
+  picked_up: () => "TrueMatch: Thanks for picking up your food. Reply 1 if you got everything or 2 if something was wrong.",
+};
+
+// Sends a text from TrueMatch if the patient agreed to texts. Returns true when one went out.
+function sendText(patient, referral, kind, at) {
+  if (!textsOk(patient)) return false;
+  // "Your clinic" instead of the clinic's name, which could reveal the patient's condition to anyone who sees the phone.
+  const place = referral.pickupLocation === patient.clinic ? "your clinic" : referral.pickupLocation;
+  addMessage(referral, "truematch", "text", TEXTS[kind](referral, place), { kind }, at);
+  return true;
+}
+
+// A patient's text reply. 1 and 2 mean different things before and after pickup; anything else goes to the care manager.
+function handleTextReply(referral, body, by) {
+  const answer = body.trim().toUpperCase();
+  addMessage(referral, "patient", "text", body.trim());
+  const beforePickup = ["referred", "accepted", "packed"].includes(referral.status);
+  const afterPickup = referral.status === "picked_up";
+  const handled = (reply) => { referral.needsReply = false; return { reply }; };
+  if (answer === "STOP") return { stop: true, ...handled("TrueMatch: You won't get any more texts. Your care manager can turn them back on.") };
+  if (answer === "1" && beforePickup) {
+    referral.comingConfirmed = new Date().toISOString();
+    return handled("TrueMatch: Great, see you then.");
+  }
+  if (answer === "2" && beforePickup) {
+    advance(referral, "issue", by, "Replied by text: can't make this pickup.");
+    return handled("TrueMatch: Thanks for letting us know. Your care manager will reach out to set up a new time.");
+  }
+  if (answer === "1" && afterPickup) {
+    advance(referral, "confirmed", by, "Confirmed by text.");
+    return handled("TrueMatch: Thank you! We're glad you got your food.");
+  }
+  if (answer === "2" && afterPickup) {
+    advance(referral, "issue", by, "Replied by text: something was wrong with the order.");
+    return handled("TrueMatch: Sorry about that. Your care manager will follow up.");
+  }
+  return { reply: `TrueMatch: Thanks, we passed your message to your care manager. ${SAFETY_LINE}` };
+}
 
 // ---- Outcomes a care manager records per patient: the 12 weeks before TrueMatch vs the latest 12 weeks ----
 const OUTCOME_COUNTS = ["hospitalBefore", "hospitalAfter", "erBefore", "erAfter", "missedBefore", "missedAfter"];
@@ -399,7 +462,7 @@ export const handler = async (event) => {
       if (who.demo) me.demoPatients = (await scanAll(PATIENTS_TABLE)).map((p) => ({ id: p.id, name: p.name })).sort((a, b) => a.name.localeCompare(b.name));
       if (is("patient")) {
         const p = await patientFor(who);
-        me.patient = p ? { id: p.id, name: p.name, clinic: p.clinic, householdSize: p.householdSize, food: foodPlanFor(p) } : null;
+        me.patient = p ? { id: p.id, name: p.name, clinic: p.clinic, householdSize: p.householdSize, food: foodPlanFor(p), textsTo: textsOk(p) ? p.phone.slice(-4) : null } : null;
       }
       return reply(200, me);
     }
@@ -414,6 +477,7 @@ export const handler = async (event) => {
       if (!is("care-manager")) return forbidden();
       const nums = positiveNumbers(body, ["dryWeightKg", "householdSize"]);
       if (!text(body.name) || !nums) return reply(400, { error: "Enter a name, a dry weight above 0, and a household size of at least 1." });
+      if (cleanPhone(body.phone) === null) return reply(400, { error: "Enter a 10-digit mobile number, or leave it blank." });
       const patient = {
         id: randomUUID(),
         name: text(body.name),
@@ -423,6 +487,8 @@ export const handler = async (event) => {
         clinic: text(body.clinic),
         optedIn: body.optedIn === "Yes" ? "Yes" : "No",
         patientEmail: text(body.patientEmail, 200).toLowerCase() || undefined,
+        phone: cleanPhone(body.phone) || undefined,
+        textsOk: body.textsOk === "Yes" && cleanPhone(body.phone) ? "Yes" : "No",
         dryWeightKg: nums.dryWeightKg,
         householdSize: Math.round(nums.householdSize),
         createdBy: who.email,
@@ -449,6 +515,20 @@ export const handler = async (event) => {
       const outcomes = cleanOutcomes(body);
       if (!outcomes) return reply(400, { error: "Use whole numbers from 0 to 365 for visits and missed treatments." });
       patient.outcomes = { ...outcomes, updatedAt: new Date().toISOString(), updatedBy: who.email };
+      await db.send(new PutCommand({ TableName: PATIENTS_TABLE, Item: patient }));
+      return reply(200, withFood(patient));
+    }
+
+    // Mobile number and whether the patient agreed to get pickup texts.
+    case "POST /patients/{id}/contact": {
+      if (!is("care-manager")) return forbidden();
+      const patient = await getPatient(patientId);
+      if (!patient) return reply(404, { error: "This patient doesn't exist. Refresh the patient list." });
+      const phone = cleanPhone(body.phone);
+      if (phone === null) return reply(400, { error: "Enter a 10-digit mobile number, or leave it blank." });
+      if (body.textsOk === "Yes" && !phone) return reply(400, { error: "Add a mobile number so TrueMatch knows where to send texts." });
+      patient.phone = phone || undefined;
+      patient.textsOk = body.textsOk === "Yes" ? "Yes" : "No";
       await db.send(new PutCommand({ TableName: PATIENTS_TABLE, Item: patient }));
       return reply(200, withFood(patient));
     }
@@ -517,6 +597,7 @@ export const handler = async (event) => {
         createdAt: new Date().toISOString(),
         createdBy: who.email,
       }, "referred", who.email);
+      sendText(patient, referral, "referred");
       await saveReferral(referral);
       return reply(201, referral);
     }
@@ -534,11 +615,65 @@ export const handler = async (event) => {
       }
       if (to === "issue" && !text(body.note)) return reply(400, { error: "Say what went wrong so the care manager can follow up." });
       if (to === "confirmed" && is("patient")) referral.survey = cleanSurvey(body.survey);
-      await saveReferral(advance(referral, to, who.email, text(body.note, 500)));
+      advance(referral, to, who.email, text(body.note, 500));
+      if (to === "packed") sendText(await getPatient(referral.patientId), referral, "packed");
+      await saveReferral(referral);
       return reply(200, is("food-partner") ? forPartner(referral) : is("patient") ? forPatient(referral) : referral);
     }
 
     // The food partner scans or types the code on the patient's card at handoff.
+    // Messages about one pickup. Patients send a note, or in the demo reply to a text; care managers reply.
+    case "POST /referrals/{id}/messages": {
+      const referral = await getReferral(patientId);
+      if (!referral) return reply(404, { error: "This referral doesn't exist. Refresh the page." });
+      const message = text(body.body, 500);
+      if (!message) return reply(400, { error: "Write a message first." });
+      if (is("care-manager")) {
+        addMessage(referral, "care-manager", "app", message, { by: who.email });
+        await saveReferral(referral);
+        return reply(200, referral);
+      }
+      if (!is("patient")) return forbidden();
+      const me = await patientFor(who);
+      if (!me || me.id !== referral.patientId) return reply(404, { error: "This referral doesn't exist. Refresh the page." });
+      if (body.via === "text") {
+        if (!textsOk(me)) return reply(400, { error: "Texts are turned off for this patient." });
+        const result = handleTextReply(referral, message, who.email);
+        addMessage(referral, "truematch", "text", result.reply, { kind: "auto" });
+        if (result.stop) {
+          me.textsOk = "No";
+          await db.send(new PutCommand({ TableName: PATIENTS_TABLE, Item: me }));
+        }
+      } else {
+        addMessage(referral, "patient", "app", message);
+      }
+      await saveReferral(referral);
+      return reply(200, forPatient(referral));
+    }
+
+    // A care manager sends a pickup reminder by text.
+    case "POST /referrals/{id}/remind": {
+      if (!is("care-manager")) return forbidden();
+      const referral = await getReferral(patientId);
+      if (!referral) return reply(404, { error: "This referral doesn't exist. Refresh the page." });
+      if (!["referred", "accepted", "packed"].includes(referral.status)) return reply(400, { error: "Reminders are for pickups that haven't happened yet." });
+      const patient = await getPatient(referral.patientId);
+      if (!sendText(patient, referral, "reminder")) return reply(400, { error: `${referral.patientName} hasn't agreed to texts, or has no mobile number on file.` });
+      referral.lastReminderAt = new Date().toISOString();
+      await saveReferral(referral);
+      return reply(200, referral);
+    }
+
+    // A care manager marks a patient's message as handled, without replying in TrueMatch (for example after a phone call).
+    case "POST /referrals/{id}/handled": {
+      if (!is("care-manager")) return forbidden();
+      const referral = await getReferral(patientId);
+      if (!referral) return reply(404, { error: "This referral doesn't exist. Refresh the page." });
+      referral.needsReply = false;
+      await saveReferral(referral);
+      return reply(200, referral);
+    }
+
     case "POST /pickup": {
       if (!is("food-partner")) return forbidden();
       const code = text(body.code, 64).toUpperCase().replace(/^TRUEMATCH:/, "").replace(/[^A-Z0-9]/g, "");
@@ -547,7 +682,9 @@ export const handler = async (event) => {
       if (!match) return reply(404, { error: `No referral has the code ${code}. Check the code on the patient's card.` });
       if (["picked_up", "confirmed"].includes(match.status)) return reply(409, { error: `${match.patientName}'s order was already picked up.` });
       if (!["accepted", "packed"].includes(match.status)) return reply(400, { error: `${match.patientName}'s order isn't ready for pickup yet.` });
-      await saveReferral(advance(match, "picked_up", who.email));
+      advance(match, "picked_up", who.email);
+      sendText(await getPatient(match.patientId), match, "picked_up");
+      await saveReferral(match);
       return reply(200, forPartner(match));
     }
 
@@ -673,6 +810,7 @@ function demoData(by) {
     const [conditions, tailorFood, planName, planType, benefits] = demoHealth[i];
     return {
       id: `demo-pt-${i + 1}`, name, dob, dryWeightKg, schedule, access, householdSize, clinic: clinics[clinic], optedIn, createdBy: by,
+      phone: `(919) 555-01${String(i + 1).padStart(2, "0")}`, textsOk: i === 3 ? "No" : "Yes", // made-up 555 numbers; Henry prefers calls
       health: { conditions, tailorFood, plan: { name: planName, type: planType, benefits }, updatedAt: new Date(now).toISOString(), updatedBy: by },
       outcomes: o ? {
         hospitalBefore: o[0], hospitalAfter: o[1], erBefore: o[2], erAfter: o[3], missedBefore: o[4], missedAfter: o[5],
@@ -726,5 +864,17 @@ function demoData(by) {
     }
     referrals.push(r);
   });
+
+  // Made-up texts and notes, so the message threads have something to show.
+  const historyAt = (r, status) => r.history.find((h) => h.status === status)?.at;
+  for (const r of referrals) {
+    const p = patients.find((x) => x.id === r.patientId);
+    if (!textsOk(p)) continue;
+    sendText(p, r, "referred", r.createdAt);
+    if (historyAt(r, "packed")) sendText(p, r, "packed", historyAt(r, "packed"));
+    if (historyAt(r, "picked_up")) sendText(p, r, "picked_up", historyAt(r, "picked_up"));
+  }
+  const maya = referrals.find((r) => r.pickupCode === "Q7KM4T");
+  addMessage(maya, "patient", "app", "Can my daughter pick it up for me if I'm running late from treatment?", {}, new Date(now).toISOString()); // newest message
   return { patients, sessions, referrals };
 }

@@ -33,6 +33,12 @@ DynamoDB ── Patients and Sessions tables (encrypted, point-in-time backups)
 
 On each patient's page, the care manager records diagnoses (kidney failure on dialysis, diabetes, high blood pressure, high cholesterol), the health plan and the food benefits it offers, and whether the patient wants food tailored to their health. The API (`foodPlanFor` in `backend/src/app.mjs`) turns that into diet labels, a choose more list and a limit list. Where conditions disagree, the stricter advice wins. It also lists the plan's food options. Each new referral carries the diet needs to the food partner, never the diagnoses or plan details. The patient sees the same guidance on their card. This is general guidance for the demo; a registered dietitian sets real limits.
 
+## Pickup texts and messages
+
+Care managers record a patient's mobile number and whether they agreed to pickup texts. TrueMatch texts the patient when a referral is sent, when the food is packed (with the pickup code), and after pickup. Care managers can also send a reminder. Replying 1 or 2 updates the referral (coming or not before pickup, got it or something was wrong after), STOP turns texts off, and anything else goes to the care manager. Each pickup also has a message thread where the patient can leave a note and the care manager can reply. Texts never mention diagnoses or diet, and they say "your clinic" instead of the clinic's name. Food partners never see messages or phone numbers.
+
+In the demo, texts are recorded and shown on the patient's card instead of going to a real phone, and the Reply 1 and Reply 2 buttons stand in for texting back. Sending real texts needs a registered number in AWS End User Messaging SMS (`sendText` in `backend/src/app.mjs` is where it plugs in), plus a review of the wording and consent process before real patients.
+
 ## Changing the website
 
 Amplify is connected to this repo's `main` branch. Commit a change to anything in `frontend/` and Amplify rebuilds and publishes the site in about 3 minutes. Watch progress in the AWS console under Amplify → TrueMatch → main.
