@@ -19,7 +19,7 @@ const { PATIENTS_TABLE, SESSIONS_TABLE, REFERRALS_TABLE, REQUESTS_TABLE, USER_PO
 // Example alert limits. Have your clinical team set the real values.
 const LIMITS = { highSystolic: 180, lowSystolic: 90, kgAboveDryWeight: 1 };
 
-const ROLES = ["care-manager", "food-partner", "patient"];
+const ROLES = ["care-manager", "food-partner", "patient", "transport-partner"];
 const REQUESTABLE = [...ROLES, "demo", "admin"]; // what a person can ask an admin for; demo = see every view, for teammates and reviewers
 // Routes anyone signed in may use, even before an admin approves them.
 const OPEN_ROUTES = ["GET /me", "POST /access-requests"];
@@ -130,9 +130,12 @@ async function patientFor(who) {
 }
 
 // What a food partner may see: enough to pack and hand over food, and nothing clinical.
-const forPartner = ({ pickupCode, patientId, createdBy, survey, messages, needsReply, lastReminderAt, ...rest }) => rest;
+const forPartner = ({ pickupCode, patientId, createdBy, survey, messages, needsReply, lastReminderAt, ride, ...rest }) => ({
+  ...rest,
+  ride: ride && { kind: ride.kind, status: ride.status, when: ride.when, partner: ride.partner }, // so they know a driver is coming, nothing more
+});
 // What a patient sees about their own referral (they need their own pickup code).
-const forPatient = ({ createdBy, ...rest }) => rest;
+const forPatient = ({ createdBy, ride, ...rest }) => ({ ...rest, ride: ride && { kind: ride.kind, status: ride.status, when: ride.when, partner: ride.partner, coverage: ride.coverage } });
 
 function advance(referral, status, by, note) {
   referral.status = status;
@@ -145,6 +148,65 @@ const MOVES = {
   "food-partner": { referred: ["accepted"], accepted: ["packed"] },
   patient: { referred: ["issue"], accepted: ["issue"], packed: ["issue"], picked_up: ["confirmed", "issue"] },
   "care-manager": { referred: ["cancelled"], accepted: ["cancelled"], packed: ["cancelled"], issue: ["cancelled"] },
+};
+
+// ---- Getting the food home: during the dialysis visit, a ride to the pickup, or home delivery ----
+// Transportation partners (volunteer drivers, ride services, delivery programs) see only what they need to do the trip:
+// first name, address, phone, place and time. Never diagnoses, diet, health plan, messages, or the pickup code.
+const DELIVERY = ["dialysis-visit", "ride", "home-delivery"];
+const TRANSPORT_PARTNERS = ["Demo Volunteer Drivers", "Demo Ride Service"];
+const COVERAGE = ["Health plan benefit", "Program or grant", "Volunteer, no cost"];
+
+// Sets how a referral's food gets home. Returns an error message, or null when it worked.
+function setTransport(referral, patient, body, by) {
+  const delivery = DELIVERY.includes(body.delivery) ? body.delivery : "dialysis-visit";
+  const active = referral.ride && ["requested", "scheduled"].includes(referral.ride.status);
+  if (delivery === "dialysis-visit") {
+    referral.delivery = delivery;
+    if (active) rideStep(referral.ride, "cancelled", by, "Care manager switched to pickup during the dialysis visit.");
+    return null;
+  }
+  if (!patient.address) return `Add ${patient.name.split(" ")[0]}'s home address first, under Contact and texts.`;
+  if (!TRANSPORT_PARTNERS.includes(body.transportPartner)) return "Choose a transportation partner.";
+  if (!COVERAGE.includes(body.coverage)) return "Choose who pays for the trip.";
+  if (active) rideStep(referral.ride, "cancelled", by, "Replaced by a new request.");
+  referral.delivery = delivery;
+  referral.ride = {
+    kind: delivery === "ride" ? "ride" : "delivery",
+    status: "requested",
+    partner: body.transportPartner,
+    coverage: body.coverage,
+    address: patient.address,
+    phone: patient.phone,
+    history: [{ status: "requested", at: new Date().toISOString(), by }],
+  };
+  return null;
+}
+
+function rideStep(ride, status, by, note, at = new Date().toISOString()) {
+  ride.status = status;
+  ride.history = [...(ride.history ?? []), { status, at, by, note: note || undefined }];
+  return ride;
+}
+
+// What a transportation partner sees about a trip.
+const forTransport = (r) => ({
+  id: r.id,
+  ref: r.ref,
+  firstName: r.patientName.split(" ")[0],
+  householdSize: r.householdSize,
+  pickupLocation: r.pickupLocation,
+  pickupWindow: r.pickupWindow,
+  foodPartner: r.partner,
+  foodReady: ["packed"].includes(r.status) || ["picked_up", "confirmed"].includes(r.status),
+  referralStatus: r.status,
+  ride: r.ride,
+});
+
+const cleanCost = (value) => {
+  if (value === undefined || value === null || value === "") return undefined;
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 0 && n <= 1000 ? Math.round(n * 100) / 100 : null; // null = invalid
 };
 
 // ---- Text messages and notes on each pickup ----
@@ -172,6 +234,8 @@ const TEXTS = {
   packed: (r, place) => `TrueMatch: Your food is ready. Pick it up ${r.pickupWindow} at ${place}. Your code is ${r.pickupCode}. Reply 1 if you'll be there or 2 if you can't make it.`,
   reminder: (r, place) => `TrueMatch reminder: Your food pickup is ${r.pickupWindow} at ${place}. Your code is ${r.pickupCode}. Reply 1 if you'll be there or 2 if you can't make it.`,
   picked_up: () => "TrueMatch: Thanks for picking up your food. Reply 1 if you got everything or 2 if something was wrong.",
+  rideScheduled: (r) => `TrueMatch: Your ride to pick up your food is set for ${r.ride.when}. ${r.ride.partner} will call you before they arrive.`,
+  deliveryScheduled: (r) => `TrueMatch: Your food will be delivered ${r.ride.when} by ${r.ride.partner}. Have your pickup code ready to show the driver.`,
 };
 
 // Sends a text from TrueMatch if the patient agreed to texts. Returns true when one went out.
@@ -400,9 +464,25 @@ function resultsFrom(referrals, patients = []) {
   const surveys = live.map((r) => r.survey).filter(Boolean);
   const tally = (field, keys) => keys.map((key) => ({ key, count: surveys.filter((s) => s[field] === key).length }));
 
+  // Trips arranged through TrueMatch: counts and cost only, never addresses or names.
+  const trips = live.filter((r) => r.ride && r.ride.status !== "cancelled");
+  const done = trips.filter((r) => r.ride.status === "completed");
+  const costed = done.filter((r) => typeof r.ride.cost === "number");
+  const transport = {
+    requested: trips.length,
+    completed: done.length,
+    declined: trips.filter((r) => r.ride.status === "declined").length,
+    rides: trips.filter((r) => r.ride.kind === "ride").length,
+    deliveries: trips.filter((r) => r.ride.kind === "delivery").length,
+    pickedUpWithHelp: done.filter((r) => reached(r, "picked_up")).length,
+    averageCost: costed.length ? Math.round((costed.reduce((sum, r) => sum + r.ride.cost, 0) / costed.length) * 100) / 100 : null,
+    totalCost: Math.round(costed.reduce((sum, r) => sum + r.ride.cost, 0) * 100) / 100,
+  };
+
   return {
     generatedAt: new Date().toISOString(),
     organization: organizationFrom(patients, referrals),
+    transport,
     feedback: {
       responses: surveys.length,
       rating: tally("rating", [4, 3, 2, 1]),
@@ -434,6 +514,7 @@ function resultsFrom(referrals, patients = []) {
           rating: r.survey?.rating ?? null,
           needsRideNext: r.survey?.needsRideNext ?? null,
           tailored: Boolean(r.diet),
+          gettingHome: r.ride && r.ride.status !== "cancelled" ? `${r.ride.kind === "ride" ? "Ride" : "Home delivery"}, ${r.ride.status}` : "Dialysis visit",
         };
       }),
   };
@@ -488,6 +569,7 @@ export const handler = async (event) => {
         optedIn: body.optedIn === "Yes" ? "Yes" : "No",
         patientEmail: text(body.patientEmail, 200).toLowerCase() || undefined,
         phone: cleanPhone(body.phone) || undefined,
+        address: text(body.address, 160) || undefined,
         textsOk: body.textsOk === "Yes" && cleanPhone(body.phone) ? "Yes" : "No",
         dryWeightKg: nums.dryWeightKg,
         householdSize: Math.round(nums.householdSize),
@@ -529,6 +611,7 @@ export const handler = async (event) => {
       if (body.textsOk === "Yes" && !phone) return reply(400, { error: "Add a mobile number so TrueMatch knows where to send texts." });
       patient.phone = phone || undefined;
       patient.textsOk = body.textsOk === "Yes" ? "Yes" : "No";
+      if (body.address !== undefined) patient.address = text(body.address, 160) || undefined;
       await db.send(new PutCommand({ TableName: PATIENTS_TABLE, Item: patient }));
       return reply(200, withFood(patient));
     }
@@ -597,6 +680,8 @@ export const handler = async (event) => {
         createdAt: new Date().toISOString(),
         createdBy: who.email,
       }, "referred", who.email);
+      const transportError = setTransport(referral, patient, body, who.email);
+      if (transportError) return reply(400, { error: transportError });
       sendText(patient, referral, "referred");
       await saveReferral(referral);
       return reply(201, referral);
@@ -616,12 +701,74 @@ export const handler = async (event) => {
       if (to === "issue" && !text(body.note)) return reply(400, { error: "Say what went wrong so the care manager can follow up." });
       if (to === "confirmed" && is("patient")) referral.survey = cleanSurvey(body.survey);
       advance(referral, to, who.email, text(body.note, 500));
+      if (to === "cancelled" && referral.ride && ["requested", "scheduled"].includes(referral.ride.status)) {
+        rideStep(referral.ride, "cancelled", who.email, "Referral cancelled.");
+      }
       if (to === "packed") sendText(await getPatient(referral.patientId), referral, "packed");
       await saveReferral(referral);
       return reply(200, is("food-partner") ? forPartner(referral) : is("patient") ? forPatient(referral) : referral);
     }
 
     // The food partner scans or types the code on the patient's card at handoff.
+    // A care manager changes how the food gets home, before pickup.
+    case "POST /referrals/{id}/transport": {
+      if (!is("care-manager")) return forbidden();
+      const referral = await getReferral(patientId);
+      if (!referral) return reply(404, { error: "This referral doesn't exist. Refresh the page." });
+      if (!["referred", "accepted", "packed"].includes(referral.status)) return reply(400, { error: "Transportation can only be changed before pickup." });
+      const transportError = setTransport(referral, await getPatient(referral.patientId), body, who.email);
+      if (transportError) return reply(400, { error: transportError });
+      await saveReferral(referral);
+      return reply(200, referral);
+    }
+
+    // Transportation partners: their trips, newest first. Cancelled trips drop off.
+    case "GET /rides": {
+      if (!is("transport-partner")) return forbidden();
+      const all = await scanAll(REFERRALS_TABLE);
+      return reply(200, all.filter((r) => r.ride && r.ride.status !== "cancelled" && r.status !== "cancelled").map(forTransport));
+    }
+
+    // Transportation partners schedule, decline, finish a ride, or confirm a home delivery with the patient's code.
+    case "POST /rides/{id}": {
+      if (!is("transport-partner")) return forbidden();
+      const referral = await getReferral(patientId);
+      if (!referral?.ride || referral.ride.status === "cancelled") return reply(404, { error: "This trip doesn't exist or was cancelled. Refresh the page." });
+      const ride = referral.ride;
+      const action = text(body.action, 20);
+      const cost = cleanCost(body.cost);
+      if (cost === null) return reply(400, { error: "Enter the trip cost as a dollar amount, or leave it blank." });
+      if (action === "schedule") {
+        if (!["requested", "scheduled"].includes(ride.status)) return reply(400, { error: `This trip is already ${ride.status}.` });
+        const when = text(body.when, 80);
+        if (!when) return reply(400, { error: "Enter the day and time, for example Thursday 11 AM." });
+        ride.when = when;
+        rideStep(ride, "scheduled", who.email);
+        sendText(await getPatient(referral.patientId), referral, ride.kind === "ride" ? "rideScheduled" : "deliveryScheduled");
+      } else if (action === "decline") {
+        if (!["requested", "scheduled"].includes(ride.status)) return reply(400, { error: `This trip is already ${ride.status}.` });
+        if (!text(body.note)) return reply(400, { error: "Say why, so the care manager can find another option." });
+        rideStep(ride, "declined", who.email, text(body.note, 300));
+      } else if (action === "complete") {
+        if (ride.kind !== "ride" || ride.status !== "scheduled") return reply(400, { error: "Only a scheduled ride can be marked done." });
+        ride.cost = cost;
+        rideStep(ride, "completed", who.email);
+      } else if (action === "deliver") {
+        if (ride.kind !== "delivery" || ride.status !== "scheduled") return reply(400, { error: "Schedule the delivery first." });
+        const code = text(body.code, 64).toUpperCase().replace(/^TRUEMATCH:/, "").replace(/[^A-Z0-9]/g, "");
+        if (code !== referral.pickupCode) return reply(400, { error: "That code doesn't match. Ask the patient for the code on their TrueMatch card." });
+        if (!["accepted", "packed"].includes(referral.status)) return reply(400, { error: "The food isn't ready to deliver yet." });
+        ride.cost = cost;
+        rideStep(ride, "completed", who.email);
+        advance(referral, "picked_up", who.email, `Delivered home by ${ride.partner}.`);
+        sendText(await getPatient(referral.patientId), referral, "picked_up");
+      } else {
+        return reply(400, { error: "Choose schedule, decline, complete, or deliver." });
+      }
+      await saveReferral(referral);
+      return reply(200, forTransport(referral));
+    }
+
     // Messages about one pickup. Patients send a note, or in the demo reply to a text; care managers reply.
     case "POST /referrals/{id}/messages": {
       const referral = await getReferral(patientId);
@@ -811,6 +958,7 @@ function demoData(by) {
     return {
       id: `demo-pt-${i + 1}`, name, dob, dryWeightKg, schedule, access, householdSize, clinic: clinics[clinic], optedIn, createdBy: by,
       phone: `(919) 555-01${String(i + 1).padStart(2, "0")}`, textsOk: i === 3 ? "No" : "Yes", // made-up 555 numbers; Henry prefers calls
+      address: `${100 + i * 12} Demo Street, Durham, NC`, // made-up
       health: { conditions, tailorFood, plan: { name: planName, type: planType, benefits }, updatedAt: new Date(now).toISOString(), updatedBy: by },
       outcomes: o ? {
         hospitalBefore: o[0], hospitalAfter: o[1], erBefore: o[2], erAfter: o[3], missedBefore: o[4], missedAfter: o[5],
@@ -864,6 +1012,25 @@ function demoData(by) {
     }
     referrals.push(r);
   });
+
+  // Made-up trips: [pickup code, ride or delivery, partner, who pays, status, when, cost]
+  const trips = [
+    ["RQD7EF", "ride", "Demo Ride Service", "Health plan benefit", "completed", "Tuesday 11 AM", 22],
+    ["HNK9FG", "delivery", "Demo Volunteer Drivers", "Volunteer, no cost", "completed", "Friday 1 PM", 0],
+    ["HNK3MN", "delivery", "Demo Volunteer Drivers", "Volunteer, no cost", "completed", "Thursday 2 PM", 0],
+    ["RQD3PQ", "ride", "Demo Ride Service", "Health plan benefit", "completed", "Monday 10 AM", 18],
+    ["HNK7QR", "delivery", "Demo Volunteer Drivers", "Volunteer, no cost", "scheduled", "Thursday 1 PM"],
+    ["JAM9RT", "ride", "Demo Ride Service", "Program or grant", "requested"],
+  ];
+  for (const [code, kind, partner, coverage, status, when, cost] of trips) {
+    const r = referrals.find((x) => x.pickupCode === code);
+    const p = patients.find((x) => x.id === r.patientId);
+    r.delivery = kind === "ride" ? "ride" : "home-delivery";
+    r.ride = { kind, status: "requested", partner, coverage, address: p.address, phone: p.phone, history: [{ status: "requested", at: r.createdAt, by }] };
+    if (status !== "requested") { r.ride.when = when; rideStep(r.ride, "scheduled", "driver@demo", undefined, r.history[1]?.at ?? r.createdAt); }
+    if (status === "completed") { r.ride.cost = cost; rideStep(r.ride, "completed", "driver@demo", undefined, r.history.find((h) => h.status === "picked_up").at); }
+    if (kind === "delivery" && status === "completed") r.history.find((h) => h.status === "picked_up").note = `Delivered home by ${partner}.`;
+  }
 
   // Made-up texts and notes, so the message threads have something to show.
   const historyAt = (r, status) => r.history.find((h) => h.status === status)?.at;

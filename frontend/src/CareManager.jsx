@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "./api.js";
-import { Form, Steps, ConfirmButton, SurveySummary, DietTags, FoodLists, MessageThread, MessageBox, STATUS_LABEL, CONDITION_LABEL, BENEFIT_LABEL, PLAN_TYPES, when, shortDate, firstName } from "./shared.jsx";
+import { Form, Steps, ConfirmButton, SurveySummary, DietTags, FoodLists, MessageThread, MessageBox, GettingHome, DELIVERY_LABEL, TRANSPORT_PARTNERS, COVERAGE, STATUS_LABEL, CONDITION_LABEL, BENEFIT_LABEL, PLAN_TYPES, when, shortDate, firstName } from "./shared.jsx";
 import Results from "./Results.jsx";
 
 const CLINICS = ["Riverbend Dialysis Center", "Eastgate Kidney Care"];
@@ -19,6 +19,15 @@ const PATIENT_FIELDS = [
   ["patientEmail", "Patient's email for their own login", "email", { optional: true, placeholder: "Optional" }],
   ["phone", "Mobile phone for pickup texts", "tel", { optional: true, placeholder: "(919) 555-0123" }],
   ["textsOk", "Patient agreed to pickup texts", ["No", "Yes"]],
+  ["address", "Home address (for rides and delivery)", "text", { optional: true, placeholder: "Street, city" }],
+];
+
+// These forms use labels; the server wants keys.
+const deliveryKey = (label) => Object.entries(DELIVERY_LABEL).find(([, l]) => l === label)?.[0] ?? "dialysis-visit";
+const TRANSPORT_FIELDS = [
+  ["delivery", "How the food gets home", Object.values(DELIVERY_LABEL)],
+  ["transportPartner", "Transportation partner (for a ride or delivery)", TRANSPORT_PARTNERS],
+  ["coverage", "Who pays for the trip", COVERAGE],
 ];
 
 const SESSION_FIELDS = [
@@ -88,7 +97,7 @@ function Patients() {
   }
 
   async function addReferral(values) {
-    const referral = await api("/referrals", { ...values, patientId: selected.id });
+    const referral = await api("/referrals", { ...values, delivery: deliveryKey(values.delivery), patientId: selected.id });
     setReferrals((list) => [referral, ...(list ?? [])]);
   }
 
@@ -138,20 +147,22 @@ function Patients() {
               <div><dt>Clinic</dt><dd>{selected.clinic || "Not recorded"}</dd></div>
               <div><dt>Food referrals</dt><dd>{selected.optedIn === "Yes" ? "Opted in" : "Not opted in"}</dd></div>
               <div><dt>Patient login</dt><dd>{selected.patientEmail || "None"}</dd></div>
+              <div><dt>Home address</dt><dd>{selected.address || "Not recorded"}</dd></div>
               <div><dt>Pickup texts</dt><dd>{selected.textsOk === "Yes" ? `On, to ${selected.phone}` : `Off${selected.phone ? `, number ${selected.phone}` : ""}`}</dd></div>
               <div><dt>Schedule</dt><dd>{selected.schedule}</dd></div>
               <div><dt>Access</dt><dd>{selected.access}</dd></div>
               <div><dt>Dry weight</dt><dd>{selected.dryWeightKg} kg</dd></div>
               <div><dt>Born</dt><dd>{selected.dob || "Not recorded"}</dd></div>
             </dl>
-            <details className="texts-setting" key={`texts-${selected.id}-${selected.textsOk}-${selected.phone ?? ""}`}>
-              <summary>Change pickup texts</summary>
+            <details className="texts-setting" key={`texts-${selected.id}-${selected.textsOk}-${selected.phone ?? ""}-${selected.address ?? ""}`}>
+              <summary>Change contact and texts</summary>
               <Form
                 fields={[
                   ["phone", "Mobile phone", "tel", { optional: true, defaultValue: selected.phone ?? "", placeholder: "(919) 555-0123" }],
                   ["textsOk", "Patient agreed to pickup texts", ["No", "Yes"], { defaultValue: selected.textsOk ?? "No" }],
+                  ["address", "Home address (for rides and delivery)", "text", { optional: true, defaultValue: selected.address ?? "", placeholder: "Street, city", full: true }],
                 ]}
-                submitLabel="Save texting settings"
+                submitLabel="Save contact and texts"
                 onSubmit={saveContact}
               />
               <p className="muted small">Texts say when food is ready and give the pickup code. They never mention diagnoses or diet.</p>
@@ -171,6 +182,20 @@ function Patients() {
                   </div>
                   <p className="ref-meta">{r.partner}. Pickup at {r.pickupLocation}, {r.pickupWindow}. Pickup code <code>{r.pickupCode}</code></p>
                   <DietTags diet={r.diet} />
+                  <GettingHome referral={r} />
+                  {["referred", "accepted", "packed"].includes(r.status) && (
+                    <details className="change-transport">
+                      <summary>Change how the food gets home</summary>
+                      <Form
+                        fields={TRANSPORT_FIELDS.map(([name, label, options]) => [name, label, options, {
+                          defaultValue: name === "delivery" ? DELIVERY_LABEL[r.delivery ?? "dialysis-visit"] : name === "transportPartner" ? r.ride?.partner : r.ride?.coverage,
+                        }])}
+                        submitLabel="Save"
+                        onSubmit={async (values) => replaceReferral(await api(`/referrals/${r.id}/transport`, { ...values, delivery: deliveryKey(values.delivery) }))}
+                      />
+                      <p className="muted small">The transportation partner sees the patient's first name, address, phone, and the place and time. Nothing about their health.</p>
+                    </details>
+                  )}
                   <Steps referral={r} />
                   <SurveySummary survey={r.survey} />
                   <PickupMessages referral={r} patient={selected} onChange={replaceReferral} />
@@ -193,6 +218,7 @@ function Patients() {
                     ["pickupWindow", "Pickup day and time", "text", { placeholder: "Wednesday after treatment" }],
                     ["pickupLocation", "Pickup location", "text", { defaultValue: selected.clinic }],
                     ["notes", "Notes for the food partner", "textarea", { optional: true, placeholder: "Low-potassium items, no stairs, etc." }],
+                    ...TRANSPORT_FIELDS,
                   ]}
                   submitLabel="Send referral"
                   onSubmit={addReferral}
@@ -421,6 +447,22 @@ function Board({ referrals, patients, onOpen }) {
                 </li>
               );
             })}
+          </ul>
+        </div>
+      )}
+      {referrals.some((r) => r.ride?.status === "declined" && ["referred", "accepted", "packed"].includes(r.status)) && (
+        <div className="board-group issue">
+          <h3>Transportation declined <span className="count">{referrals.filter((r) => r.ride?.status === "declined" && ["referred", "accepted", "packed"].includes(r.status)).length}</span></h3>
+          <ul className="board-list">
+            {referrals.filter((r) => r.ride?.status === "declined" && ["referred", "accepted", "packed"].includes(r.status)).map((r) => (
+              <li key={r.id}>
+                <button onClick={() => onOpen(r.patientId)}>
+                  <strong>{r.patientName}</strong>
+                  <span>{r.ride.partner}: {r.ride.history.at(-1).note}</span>
+                  <span className="muted">Choose another option {shortDate(r.ride.history.at(-1).at)}</span>
+                </button>
+              </li>
+            ))}
           </ul>
         </div>
       )}

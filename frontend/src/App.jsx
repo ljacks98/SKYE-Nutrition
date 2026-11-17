@@ -4,9 +4,10 @@ import { ROLE_LABEL } from "./shared.jsx";
 import CareManager from "./CareManager.jsx";
 import FoodPartner from "./FoodPartner.jsx";
 import PatientCard from "./PatientCard.jsx";
+import TransportPartner from "./TransportPartner.jsx";
 import { Waiting, Account, AdminRequests } from "./Access.jsx";
 
-const VIEWS = ["care-manager", "food-partner", "patient"];
+const VIEWS = ["care-manager", "food-partner", "transport-partner", "patient"];
 
 // Decides what the signed-in person sees. The server enforces the same rules,
 // so this only chooses screens; it isn't what keeps data private.
@@ -60,7 +61,10 @@ export default function App({ user, signOut }) {
   else if (!role) body = me.admin ? <AdminRequests /> : <Waiting me={me} onCheckAgain={() => loadMe(true)} />;
   else {
     const key = `${role}-${patientId}-${reloads}`; // a fresh screen whenever the view changes
-    body = role === "care-manager" ? <CareManager key={key} /> : role === "food-partner" ? <FoodPartner key={key} /> : <PatientCard key={key} />;
+    body = role === "care-manager" ? <CareManager key={key} />
+      : role === "food-partner" ? <FoodPartner key={key} />
+      : role === "transport-partner" ? <TransportPartner key={key} />
+      : <PatientCard key={key} />;
   }
 
   return (

@@ -7,6 +7,7 @@ const REQUEST_OPTIONS = [
   ["demo", "Full demo: review every view with made-up patients (for teammates and reviewers)"],
   ["care-manager", "Care manager: refer patients and track their food pickups"],
   ["food-partner", "Food partner: pack orders and confirm pickups"],
+  ["transport-partner", "Transportation partner: schedule rides and home deliveries"],
   ["patient", "Patient: see my pickups and pickup code"],
   ["admin", "Admin: approve other people's access"],
 ];

@@ -40,6 +40,7 @@ export const ROLE_LABEL = {
   "care-manager": "Care manager",
   "food-partner": "Food partner",
   patient: "Patient",
+  "transport-partner": "Transportation",
   admin: "Admin",
   demo: "Full demo",
 };
@@ -223,5 +224,23 @@ export function MessageBox({ label, placeholder, sendLabel, onSend, hint }) {
       {error && <p className="error">{error}</p>}
       <button disabled={busy || !body.trim()}>{busy ? "Sending…" : sendLabel}</button>
     </form>
+  );
+}
+
+// ---- Getting the food home: during the dialysis visit, a ride to the pickup, or home delivery ----
+export const DELIVERY_LABEL = { "dialysis-visit": "During their dialysis visit", ride: "Ride to the pickup", "home-delivery": "Home delivery" };
+export const TRANSPORT_PARTNERS = ["Demo Volunteer Drivers", "Demo Ride Service"];
+export const COVERAGE = ["Health plan benefit", "Program or grant", "Volunteer, no cost"];
+export const TRIP_STATUS_LABEL = { requested: "requested", scheduled: "scheduled", completed: "done", declined: "declined", cancelled: "cancelled" };
+
+// One line saying how the food gets home, for any view. The ride object is already trimmed for that viewer by the server.
+export function GettingHome({ referral: r }) {
+  const ride = r.ride && r.ride.status !== "cancelled" ? r.ride : null;
+  if (!ride) return <p className="getting-home">Getting home: during the dialysis visit</p>;
+  const what = ride.kind === "ride" ? "Ride to the pickup" : "Home delivery";
+  return (
+    <p className={`getting-home trip-${ride.status}`}>
+      Getting home: {what} by {ride.partner}, {TRIP_STATUS_LABEL[ride.status]}{ride.when && ride.status !== "declined" ? ` for ${ride.when}` : ""}
+    </p>
   );
 }
