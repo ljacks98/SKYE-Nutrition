@@ -79,7 +79,7 @@ export default function App({ user, signOut }) {
 
       {me?.demo && page === "home" && (
         <div className="demobar">
-          <span className="demobar-label">Demo account. Showing the</span>
+          <span className="demobar-label">{me.admin ? "Admin" : "Demo account"}. Showing the</span>
           <div className="segmented" role="group" aria-label="Show TrueMatch as">
             {VIEWS.map((v) => (
               <button key={v} aria-pressed={view === v} onClick={() => setView(v)}>{ROLE_LABEL[v]}</button>
