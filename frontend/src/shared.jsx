@@ -178,3 +178,50 @@ export function FoodLists({ food, chooseTitle = "Choose more", limitTitle = "Lim
     </>
   );
 }
+
+// ---- Messages about one pickup: TrueMatch texts, the patient's replies and notes, and the care manager's replies ----
+export const SAFETY_LINE = "For medical questions, call your clinic. In an emergency, call 911.";
+
+export function MessageThread({ messages, viewer }) {
+  if (!messages?.length) return <p className="muted small">No messages yet.</p>;
+  const label = (m) => {
+    if (m.from === "truematch") return "TrueMatch text";
+    if (m.from === "care-manager") return viewer === "patient" ? "Your care manager" : "Care manager";
+    const who = viewer === "patient" ? "You" : "Patient";
+    return m.via === "text" ? `${who}, by text` : `${who}, note`;
+  };
+  return (
+    <ol className="thread">
+      {[...messages].sort((a, b) => a.at.localeCompare(b.at)).map((m) => (
+        <li key={m.id} className={`msg from-${m.from}`}>
+          <span className="msg-meta">{label(m)}, {when(m.at)}</span>
+          <p>{m.body}</p>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+// A small box for writing one message.
+export function MessageBox({ label, placeholder, sendLabel, onSend, hint }) {
+  const [body, setBody] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  async function submit(event) {
+    event.preventDefault();
+    if (!body.trim()) return;
+    setBusy(true); setError("");
+    try { await onSend(body.trim()); setBody(""); } catch (e) { setError(e.message); } finally { setBusy(false); }
+  }
+  return (
+    <form className="message-box" onSubmit={submit}>
+      <label>
+        {label}
+        <textarea rows={2} maxLength={500} value={body} placeholder={placeholder} onChange={(e) => setBody(e.target.value)} />
+      </label>
+      {hint && <p className="muted small">{hint}</p>}
+      {error && <p className="error">{error}</p>}
+      <button disabled={busy || !body.trim()}>{busy ? "Sending…" : sendLabel}</button>
+    </form>
+  );
+}

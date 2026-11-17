@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import QRCode from "qrcode";
 import { api } from "./api.js";
-import { Steps, DietTags, FoodLists, STATUS_LABEL, RATING_LABEL, RIDE_LABEL, RIDE_NEXT_LABEL, firstName, shortDate } from "./shared.jsx";
+import { Steps, DietTags, FoodLists, MessageThread, MessageBox, SAFETY_LINE, STATUS_LABEL, RATING_LABEL, RIDE_LABEL, RIDE_NEXT_LABEL, firstName, shortDate } from "./shared.jsx";
 
 // One survey question as large tap-friendly choices.
 function Choices({ legend, name, options, answers, setAnswers }) {
@@ -51,6 +51,7 @@ export default function PatientCard() {
       <h2>{firstName(me.patient.name)}'s food pickups</h2>
       <p className="lede">From your care team at {me.patient.clinic}.</p>
       {current ? <CurrentPickup referral={current} onChange={replace} /> : <p className="muted">No pickups scheduled right now. Your care manager will set one up with you.</p>}
+      {current && <PickupMessages referral={current} textsTo={me.patient.textsTo} onChange={replace} />}
       {me.patient.food && <FoodForYou food={me.patient.food} />}
       {past.length > 0 && (
         <>
@@ -66,6 +67,45 @@ export default function PatientCard() {
         </>
       )}
     </main>
+  );
+}
+
+// Texts from TrueMatch and notes with the care manager about the current pickup.
+// In the demo the texts show here; in a pilot they go to the patient's phone, and the Reply buttons stand in for texting back.
+function PickupMessages({ referral: r, textsTo, onChange }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const messages = r.messages ?? [];
+  // The last text that asked for a 1 or 2, if the patient hasn't answered it and it still applies.
+  const lastAsk = [...messages].reverse().find((m) => m.from === "truematch" && ["packed", "reminder", "picked_up"].includes(m.kind));
+  const answered = lastAsk && messages.some((m) => m.from === "patient" && m.via === "text" && m.at >= lastAsk.at);
+  const stillApplies = lastAsk && (lastAsk.kind === "picked_up" ? r.status === "picked_up" : ["referred", "accepted", "packed"].includes(r.status));
+  const canReply = textsTo && lastAsk && !answered && stillApplies;
+  async function textBack(body) {
+    setBusy(true); setError("");
+    try { onChange(await api(`/referrals/${r.id}/messages`, { via: "text", body })); } catch (e) { setError(e.message); } finally { setBusy(false); }
+  }
+  return (
+    <section className="patient-messages">
+      <h3>Messages about this pickup</h3>
+      {textsTo ? <p className="muted small">Texts go to your phone ending in {textsTo}.</p> : <p className="muted small">Pickup texts are off. Ask your care manager if you'd like them.</p>}
+      <MessageThread messages={messages} viewer="patient" />
+      {canReply && (
+        <div className="text-reply">
+          <p className="small">Demo: answer the text the way you would on your phone.</p>
+          <button disabled={busy} onClick={() => textBack("1")}>Reply 1</button>
+          <button className="quiet" disabled={busy} onClick={() => textBack("2")}>Reply 2</button>
+        </div>
+      )}
+      {error && <p className="error">{error}</p>}
+      <MessageBox
+        label="Send a note to your care manager"
+        placeholder="For example: Can my daughter pick it up for me?"
+        sendLabel="Send note"
+        hint={`This is for questions about your food pickup. ${SAFETY_LINE}`}
+        onSend={(body) => api(`/referrals/${r.id}/messages`, { body }).then(onChange)}
+      />
+    </section>
   );
 }
 
