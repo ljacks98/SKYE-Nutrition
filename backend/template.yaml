@@ -44,6 +44,9 @@ Resources:
   AdminGroup:
     Type: AWS::Cognito::UserPoolGroup
     Properties: { UserPoolId: !Ref UserPool, GroupName: admin, Description: "Admins: approve or deny access requests" }
+  TransportPartnerGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties: { UserPoolId: !Ref UserPool, GroupName: transport-partner, Description: "Transportation partners: schedule rides and home deliveries. They see first name, address, phone, place and time only." }
   DemoGroup:
     Type: AWS::Cognito::UserPoolGroup
     Properties: { UserPoolId: !Ref UserPool, GroupName: demo, Description: "Presenting accounts that can switch between all three views and load made-up demo data" }
@@ -141,6 +144,9 @@ Resources:
         PickupMessage: { Type: HttpApi, Properties: { ApiId: !Ref Api, Method: POST, Path: "/referrals/{id}/messages" } }
         PickupReminder: { Type: HttpApi, Properties: { ApiId: !Ref Api, Method: POST, Path: "/referrals/{id}/remind" } }
         MessageHandled: { Type: HttpApi, Properties: { ApiId: !Ref Api, Method: POST, Path: "/referrals/{id}/handled" } }
+        ChangeTransport: { Type: HttpApi, Properties: { ApiId: !Ref Api, Method: POST, Path: "/referrals/{id}/transport" } }
+        ListRides: { Type: HttpApi, Properties: { ApiId: !Ref Api, Method: GET, Path: /rides } }
+        UpdateRide: { Type: HttpApi, Properties: { ApiId: !Ref Api, Method: POST, Path: "/rides/{id}" } }
         Me: { Type: HttpApi, Properties: { ApiId: !Ref Api, Method: GET, Path: /me } }
         ListReferrals: { Type: HttpApi, Properties: { ApiId: !Ref Api, Method: GET, Path: /referrals } }
         AddReferral: { Type: HttpApi, Properties: { ApiId: !Ref Api, Method: POST, Path: /referrals } }

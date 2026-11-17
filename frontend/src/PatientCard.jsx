@@ -166,6 +166,9 @@ function CurrentPickup({ referral: r, onChange }) {
           <div><dt>Where</dt><dd>{r.pickupLocation}</dd></div>
           <div><dt>When</dt><dd>{r.pickupWindow}</dd></div>
           <div><dt>From</dt><dd>{r.partner}</dd></div>
+          {r.ride && r.ride.status !== "cancelled" && r.ride.status !== "declined" && (
+            <div><dt>Getting home</dt><dd>{r.ride.kind === "ride" ? "A ride to the pickup" : "Delivered to your home"} by {r.ride.partner}{r.ride.when ? `, ${r.ride.when}` : ", time to be set"}</dd></div>
+          )}
         </dl>
         {r.diet && (
           <div className="packed-for-you">

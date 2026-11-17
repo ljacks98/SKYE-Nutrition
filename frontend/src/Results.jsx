@@ -45,6 +45,14 @@ export default function Results() {
         ["Missed treatments: 12 weeks before", org.missed.before], ["Missed treatments: latest 12 weeks", org.missed.after],
         ["Patients with key labs in range now", `${org.labs.inRangeNow} of ${org.labs.withLabs}`],
       ] : []),
+      ...(data.transport?.requested ? [
+        [],
+        ["Trips requested (rides and home deliveries)", data.transport.requested],
+        ["Rides to the pickup", data.transport.rides], ["Home deliveries", data.transport.deliveries],
+        ["Trips completed", data.transport.completed], ["Trips declined", data.transport.declined],
+        ["Pickups completed with transportation help", data.transport.pickedUpWithHelp],
+        ["Average cost per completed trip", data.transport.averageCost ?? ""], ["Total trip cost", data.transport.totalCost],
+      ] : []),
       ...(fb ? [
         [],
         ["Patient survey responses", fb.responses],
@@ -53,8 +61,8 @@ export default function Results() {
         ...fb.needsRideNext.map((x) => [`Needs a ride next time: ${RIDE_NEXT_LABEL[x.key]}`, x.count]),
       ] : []),
       [],
-      ["Referral", "Referred on", "Household size", "Food partner", "Status", "Days to pickup", "Patient rating", "Needs a ride next time"],
-      ...data.rows.map((r) => [r.ref, r.referredOn, r.householdSize, r.partner, STATUS_LABEL[r.status], r.daysToPickup ?? "", r.rating ? RATING_LABEL[r.rating] : "", r.needsRideNext ? RIDE_NEXT_LABEL[r.needsRideNext] : ""]),
+      ["Referral", "Referred on", "Household size", "Food partner", "Status", "Days to pickup", "Getting home", "Patient rating", "Needs a ride next time"],
+      ...data.rows.map((r) => [r.ref, r.referredOn, r.householdSize, r.partner, STATUS_LABEL[r.status], r.daysToPickup ?? "", r.gettingHome ?? "", r.rating ? RATING_LABEL[r.rating] : "", r.needsRideNext ? RIDE_NEXT_LABEL[r.needsRideNext] : ""]),
     ];
     const csv = rows.map((row) => row.map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
     const link = document.createElement("a");
@@ -107,6 +115,18 @@ export default function Results() {
             <li><strong>{plural(data.issues, "problem", "problems")}</strong> reported by patients{data.cancelled ? `, and ${plural(data.cancelled, "referral", "referrals")} cancelled (left out of the counts above)` : ""}.</li>
           </ul>
 
+          {data.transport?.requested > 0 && (
+            <>
+              <h3>Getting food home</h3>
+              <ul className="findings">
+                <li><strong>{plural(data.transport.requested, "trip", "trips")}</strong> arranged through TrueMatch: {plural(data.transport.rides, "ride", "rides")} to the pickup and {plural(data.transport.deliveries, "home delivery", "home deliveries")}.</li>
+                <li><strong>{data.transport.completed}</strong> completed{data.transport.declined ? `, ${data.transport.declined} declined and sent back to the care manager` : ""}.</li>
+                <li><strong>{plural(data.transport.pickedUpWithHelp, "pickup", "pickups")}</strong> happened because of a ride or delivery.</li>
+                {data.transport.averageCost !== null && <li><strong>${data.transport.averageCost.toFixed(2)}</strong> average cost per completed trip (${data.transport.totalCost.toFixed(2)} total), including volunteer trips at no cost.</li>}
+              </ul>
+            </>
+          )}
+
           <h3>What patients said</h3>
           {fb ? (
             <>
@@ -142,12 +162,12 @@ export default function Results() {
           <h3>Every referral</h3>
           <div className="table-wrap">
             <table>
-              <thead><tr><th>Referral</th><th>Referred on</th><th>Household</th><th>Food partner</th><th>Status</th><th>Days to pickup</th><th>Rating</th><th>Ride next time</th></tr></thead>
+              <thead><tr><th>Referral</th><th>Referred on</th><th>Household</th><th>Food partner</th><th>Status</th><th>Days to pickup</th><th>Getting home</th><th>Rating</th><th>Ride next time</th></tr></thead>
               <tbody>
                 {data.rows.map((r) => (
                   <tr key={r.ref + r.referredOn}>
                     <td>{r.ref}</td><td>{r.referredOn}</td><td>{r.householdSize}</td><td>{r.partner}</td>
-                    <td>{STATUS_LABEL[r.status]}</td><td>{r.daysToPickup ?? "—"}</td>
+                    <td>{STATUS_LABEL[r.status]}</td><td>{r.daysToPickup ?? "—"}</td><td>{r.gettingHome ?? "—"}</td>
                     <td>{r.rating ? RATING_LABEL[r.rating] : "—"}</td><td>{r.needsRideNext ? RIDE_NEXT_LABEL[r.needsRideNext] : "—"}</td>
                   </tr>
                 ))}

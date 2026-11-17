@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "./api.js";
-import { Steps, DietTags, FoodLists, STATUS_LABEL, shortDate } from "./shared.jsx";
+import { Steps, DietTags, FoodLists, GettingHome, STATUS_LABEL, shortDate } from "./shared.jsx";
 
 // The food partner's day: confirm pickups by scanning the patient's code, and work the queue.
 export default function FoodPartner() {
@@ -48,6 +48,8 @@ export default function FoodPartner() {
                       <FoodLists food={r.diet} chooseTitle="Pack" limitTitle="Leave out or keep small" />
                     </details>
                   )}
+                  {r.ride && r.ride.status !== "cancelled" && <GettingHome referral={r} />}
+                  {r.ride?.kind === "delivery" && ["scheduled", "requested"].includes(r.ride.status) && <p className="muted small">A driver will collect this box and deliver it.</p>}
                   {r.notes && <p className="notes">{r.notes}</p>}
                   {action ? (
                     <button onClick={() => move(r, next).catch((e) => setError(e.message))}>{action}</button>

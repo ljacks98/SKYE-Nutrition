@@ -446,3 +446,13 @@ th { color: var(--slate); font-size: 0.875rem; font-weight: 400; }
   main.single { max-width: none; padding: 0; }
   .funnel-bar, .funnel-bar span { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
+
+/* ---------- Getting the food home ---------- */
+.getting-home { margin: 0.5rem 0; font-weight: 700; color: var(--sign); }
+.getting-home.trip-declined { color: var(--signal); }
+details.change-transport { margin: 0.25rem 0 0.75rem; }
+details.change-transport summary { cursor: pointer; color: var(--sign); font-weight: 700; font-size: 0.9375rem; }
+.trip-list { display: grid; gap: 1rem; margin: 0; padding: 0; list-style: none; }
+.trip .facts { margin: 0.5rem 0; }
+.trip-form { margin-top: 0.75rem; }
+.trip-form .muted.small { display: block; margin-top: 0.25rem; font-weight: 400; }
