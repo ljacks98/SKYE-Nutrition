@@ -250,6 +250,7 @@ function Patients() {
 function PickupMessages({ referral: r, patient, onChange }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [open, setOpen] = useState(Boolean(r.needsReply)); // stays open after a reply, so the reminder button is still there
   const count = r.messages?.length ?? 0;
   const beforePickup = ["referred", "accepted", "packed"].includes(r.status);
   async function post(path, body = {}) {
@@ -257,7 +258,7 @@ function PickupMessages({ referral: r, patient, onChange }) {
     try { onChange(await api(path, body)); } catch (e) { setError(e.message); } finally { setBusy(false); }
   }
   return (
-    <details className="pickup-messages" open={r.needsReply || undefined}>
+    <details className="pickup-messages" open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
       <summary>
         Messages ({count})
         {r.needsReply && <span className="badge-new">New message</span>}
