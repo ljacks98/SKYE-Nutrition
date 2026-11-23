@@ -2,10 +2,13 @@ import { createRoot } from "react-dom/client";
 import { Amplify } from "aws-amplify";
 import { Authenticator } from "@aws-amplify/ui-react";
 import "@aws-amplify/ui-react/styles.css";
-import "@fontsource/atkinson-hyperlegible/400.css";
-import "@fontsource/atkinson-hyperlegible/700.css";
-import "@fontsource/barlow-condensed/600.css";
-import "@fontsource/barlow-condensed/700.css";
+// Brand type: Montserrat for titles and headers (600 to 800), Inter for everything people read and type (400 to 600).
+import "@fontsource/montserrat/600.css";
+import "@fontsource/montserrat/700.css";
+import "@fontsource/montserrat/800.css";
+import "@fontsource/inter/400.css";
+import "@fontsource/inter/500.css";
+import "@fontsource/inter/600.css";
 import "./styles.css";
 import App from "./App.jsx";
 
@@ -24,7 +27,7 @@ Amplify.configure({
 // Above the sign-in card: the TrueMatch stop, where the yellow line starts.
 const SignInHeader = () => (
   <div className="signin-brand">
-    <h1>TrueMatch</h1>
+    <h1><img src="/truematch-logo.png" alt="TrueMatch Resource Navigator" width="500" height="111" /></h1>
     <p>A care navigator for you</p>
   </div>
 );

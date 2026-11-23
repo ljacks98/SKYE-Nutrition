@@ -9,8 +9,8 @@
   },
   "dependencies": {
     "@aws-amplify/ui-react": "^6.5.0",
-    "@fontsource/atkinson-hyperlegible": "^5.0.0",
-    "@fontsource/barlow-condensed": "^5.0.0",
+    "@fontsource/inter": "^5.0.0",
+    "@fontsource/montserrat": "^5.0.0",
     "aws-amplify": "^6.6.0",
     "jsqr": "^1.4.0",
     "qrcode": "^1.5.4",

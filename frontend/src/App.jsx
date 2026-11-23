@@ -70,7 +70,11 @@ export default function App({ user, signOut }) {
   return (
     <div className="app">
       <header>
-        <h1><button className="home-link" onClick={() => setPage("home")}>TrueMatch</button></h1>
+        <h1>
+          <button className="home-link" onClick={() => setPage("home")}>
+            <img src="/truematch-logo.png" alt="TrueMatch Resource Navigator, home" width="216" height="48" />
+          </button>
+        </h1>
         {me && (
           <nav className="account-nav" aria-label="Account">
             {me.admin && <button aria-pressed={page === "requests"} onClick={() => setPage("requests")}>Access requests</button>}
