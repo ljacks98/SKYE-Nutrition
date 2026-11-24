@@ -198,7 +198,7 @@ const forTransport = (r) => ({
   pickupLocation: r.pickupLocation,
   pickupWindow: r.pickupWindow,
   foodPartner: r.partner,
-  foodReady: ["packed"].includes(r.status) || ["picked_up", "confirmed"].includes(r.status),
+  foodReady: r.status === "packed", // a delivery can only be confirmed once the box is packed
   referralStatus: r.status,
   ride: r.ride,
 });
@@ -757,7 +757,7 @@ export const handler = async (event) => {
         if (ride.kind !== "delivery" || ride.status !== "scheduled") return reply(400, { error: "Schedule the delivery first." });
         const code = text(body.code, 64).toUpperCase().replace(/^TRUEMATCH:/, "").replace(/[^A-Z0-9]/g, "");
         if (code !== referral.pickupCode) return reply(400, { error: "That code doesn't match. Ask the patient for the code on their TrueMatch card." });
-        if (!["accepted", "packed"].includes(referral.status)) return reply(400, { error: "The food isn't ready to deliver yet." });
+        if (referral.status !== "packed") return reply(400, { error: "The food partner hasn't packed this order yet. Confirm the delivery once it's packed." });
         ride.cost = cost;
         rideStep(ride, "completed", who.email);
         advance(referral, "picked_up", who.email, `Delivered home by ${ride.partner}.`);
@@ -995,7 +995,8 @@ function demoData(by) {
     const p = patients[pi];
     const r = {
       id: `demo-ref-${n + 1}`, ref: `TM-${1040 + n}`, patientId: p.id, patientName: p.name, householdSize: p.householdSize,
-      need: needs[n % needs.length], pickupLocation: p.clinic, pickupWindow: n % 2 ? "Thursday 10 AM - 2 PM" : "Wednesday after treatment",
+      // Pickups happen after treatment on one of the patient's own dialysis days.
+      need: needs[n % needs.length], pickupLocation: p.clinic, pickupWindow: `${p.schedule.startsWith("Mon") ? "Wednesday" : "Thursday"} after treatment`,
       partner: p.clinic === clinics[0] ? "Riverside Community Pantry" : "Eastside Food Collective", notes: "",
       diet: dietFor(p), pickupCode: code, createdAt: at(daysAgo), createdBy: by, history: [],
     };
@@ -1013,18 +1014,21 @@ function demoData(by) {
     referrals.push(r);
   });
 
-  // Made-up trips: [pickup code, ride or delivery, partner, who pays, status, when, cost]
+  // Made-up trips: [pickup code, ride or delivery, partner, who pays, status, when, cost].
+  // Rides and deliveries fall on a day off from dialysis (patients are already at the clinic on treatment days),
+  // so their pickup window moves to that day and each trip time sits inside it.
   const trips = [
     ["RQD7EF", "ride", "Demo Ride Service", "Health plan benefit", "completed", "Tuesday 11 AM", 22],
     ["HNK9FG", "delivery", "Demo Volunteer Drivers", "Volunteer, no cost", "completed", "Friday 1 PM", 0],
-    ["HNK3MN", "delivery", "Demo Volunteer Drivers", "Volunteer, no cost", "completed", "Thursday 2 PM", 0],
-    ["RQD3PQ", "ride", "Demo Ride Service", "Health plan benefit", "completed", "Monday 10 AM", 18],
-    ["HNK7QR", "delivery", "Demo Volunteer Drivers", "Volunteer, no cost", "scheduled", "Thursday 1 PM"],
+    ["HNK3MN", "delivery", "Demo Volunteer Drivers", "Volunteer, no cost", "completed", "Friday 12:30 PM", 0],
+    ["RQD3PQ", "ride", "Demo Ride Service", "Health plan benefit", "completed", "Tuesday 10:30 AM", 18],
+    ["HNK7QR", "delivery", "Demo Volunteer Drivers", "Volunteer, no cost", "scheduled", "Friday 1 PM"],
     ["JAM9RT", "ride", "Demo Ride Service", "Program or grant", "requested"],
   ];
   for (const [code, kind, partner, coverage, status, when, cost] of trips) {
     const r = referrals.find((x) => x.pickupCode === code);
     const p = patients.find((x) => x.id === r.patientId);
+    r.pickupWindow = `${p.schedule.startsWith("Mon") ? "Tuesday" : "Friday"} 10 AM - 2 PM`;
     r.delivery = kind === "ride" ? "ride" : "home-delivery";
     r.ride = { kind, status: "requested", partner, coverage, address: p.address, phone: p.phone, history: [{ status: "requested", at: r.createdAt, by }] };
     if (status !== "requested") { r.ride.when = when; rideStep(r.ride, "scheduled", "driver@demo", undefined, r.history[1]?.at ?? r.createdAt); }

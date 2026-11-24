@@ -40,6 +40,15 @@ export default function TransportPartner() {
   );
 }
 
+// Where the food stands, in the driver's terms.
+function foodStatus(t, delivery) {
+  if (t.referralStatus === "packed") return "Packed and ready";
+  if (["referred", "accepted"].includes(t.referralStatus)) return "Not packed yet";
+  if (["picked_up", "confirmed"].includes(t.referralStatus)) return delivery ? "Delivered" : "Picked up";
+  if (t.referralStatus === "issue") return "Problem reported to the care manager";
+  return STATUS_LABEL[t.referralStatus];
+}
+
 function Trip({ trip: t, onChange }) {
   const [mode, setMode] = useState(""); // "", schedule, decline, complete, deliver
   const [busy, setBusy] = useState(false);
@@ -79,20 +88,23 @@ function Trip({ trip: t, onChange }) {
           </>
         )}
         <div><dt>Phone</dt><dd>{t.ride.phone || "Not on file. Ask the care manager."}</dd></div>
-        <div><dt>Their pickup window</dt><dd>{t.pickupWindow}</dd></div>
+        <div><dt>{delivery ? "Food pickup window" : "Their pickup window"}</dt><dd>{t.pickupWindow}</dd></div>
         <div><dt>Scheduled for</dt><dd>{t.ride.when || "Not scheduled yet"}</dd></div>
         <div><dt>Household</dt><dd>{t.householdSize === 1 ? "1 person" : `${t.householdSize} people`}{delivery ? " (box size)" : ""}</dd></div>
         <div><dt>Who pays</dt><dd>{t.ride.coverage}{typeof t.ride.cost === "number" ? `, $${t.ride.cost.toFixed(2)}` : ""}</dd></div>
-        <div><dt>Food</dt><dd>{t.foodReady ? "Packed and ready" : STATUS_LABEL[t.referralStatus]}</dd></div>
+        <div><dt>Food</dt><dd>{foodStatus(t, delivery)}</dd></div>
       </dl>
       {t.ride.status === "declined" && <p className="notes">Declined: {t.ride.history.at(-1).note}</p>}
       {t.ride.status === "completed" && <p className="muted small">Done {shortDate(t.ride.history.at(-1).at)}.</p>}
 
+      {!mode && t.ride.status === "scheduled" && delivery && !t.foodReady && (
+        <p className="muted small">You can confirm the delivery once the food partner packs it.</p>
+      )}
       {!mode && ["requested", "scheduled"].includes(t.ride.status) && (
         <div className="msg-actions">
           <button onClick={() => setMode("schedule")}>{t.ride.status === "requested" ? "Schedule" : "Reschedule"}</button>
           {t.ride.status === "scheduled" && !delivery && <button onClick={() => setMode("complete")}>Mark ride done</button>}
-          {t.ride.status === "scheduled" && delivery && <button onClick={() => setMode("deliver")}>Confirm delivery</button>}
+          {t.ride.status === "scheduled" && delivery && t.foodReady && <button onClick={() => setMode("deliver")}>Confirm delivery</button>}
           <button className="quiet" onClick={() => setMode("decline")}>Can't do this trip</button>
         </div>
       )}
