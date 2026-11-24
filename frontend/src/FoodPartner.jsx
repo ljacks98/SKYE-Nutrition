@@ -49,13 +49,15 @@ export default function FoodPartner() {
                     </details>
                   )}
                   {r.ride && r.ride.status !== "cancelled" && <GettingHome referral={r} />}
-                  {r.ride?.kind === "delivery" && ["scheduled", "requested"].includes(r.ride.status) && <p className="muted small">A driver will collect this box and deliver it.</p>}
                   {r.notes && <p className="notes">{r.notes}</p>}
                   {action ? (
                     <button onClick={() => move(r, next).catch((e) => setError(e.message))}>{action}</button>
+                  ) : r.ride?.kind === "delivery" && ["scheduled", "requested"].includes(r.ride.status) ? (
+                    <p className="muted">Hand this box to the {r.ride.partner} driver. {r.patientName.split(" ")[0]} confirms the delivery at home with their code.</p>
                   ) : (
                     <p className="muted">Scan the code on {r.patientName.split(" ")[0]}'s patient card at handoff.</p>
                   )}
+                  {action && r.ride?.kind === "delivery" && ["scheduled", "requested"].includes(r.ride.status) && <p className="muted small">A driver will collect this box and deliver it.</p>}
                 </li>
               ))}
             </ul>
