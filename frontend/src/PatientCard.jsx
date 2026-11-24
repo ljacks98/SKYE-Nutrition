@@ -135,7 +135,7 @@ function CurrentPickup({ referral: r, onChange }) {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    QRCode.toDataURL(`truematch:${r.pickupCode}`, { margin: 1, width: 240, color: { dark: "#13294b", light: "#ffffff" } }).then(setQr);
+    QRCode.toDataURL(`truematch:${r.pickupCode}`, { margin: 1, width: 240, color: { dark: "#011A3C", light: "#ffffff" } }).then(setQr);
   }, [r.pickupCode]);
 
   async function send(status, survey) {
